@@ -1,4 +1,4 @@
-# claude-profiles
+# Claude-Acc-Manager
 
 Run two Claude Code accounts (e.g. a work Team seat and a personal Pro
 subscription) side by side, permanently logged in, with zero `/login`
@@ -32,7 +32,7 @@ mapping and stay consistent.
 ## Install (new machine)
 
 ```fish
-git clone <this-repo> && cd claude-profiles
+git clone <this-repo> && cd Claude-Acc-Manager
 ./install.fish     # symlinks claude-profiles.fish into ~/.config/fish/conf.d/
 exec fish
 ```
