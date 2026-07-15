@@ -87,6 +87,58 @@ function __claude_rewrite_registry -a regf srcprefix dstprefix
     ' $regf
 end
 
+# Union two settings.local.json permission sets (A is the base). Dedupes the
+# allow/deny/ask arrays and drops any that end up empty. Prints to stdout.
+function __claude_merge_permissions -a af bf
+    begin
+        cat $af 2>/dev/null; or echo '{}'
+        echo
+        cat $bf 2>/dev/null; or echo '{}'
+    end | jq -s '
+        def U(x; y): ((x // []) + (y // []) | unique);
+        (.[0]) as $a | (.[1]) as $b
+        | (($a.permissions // {}) * ($b.permissions // {})) as $mp
+        | $a * {permissions: ($mp + {
+              allow: U($a.permissions.allow; $b.permissions.allow),
+              deny:  U($a.permissions.deny;  $b.permissions.deny),
+              ask:   U($a.permissions.ask;   $b.permissions.ask)
+          })}
+        | .permissions |= with_entries(
+              select((.value | type != "array") or (.value | length > 0)))
+    '
+end
+
+# Make personal/settings.local.json a symlink to work/settings.local.json so
+# the permission allowlist is one shared file. Self-healing: if a write ever
+# replaced the symlink with a regular file, its grants are unioned back into the
+# shared file and the symlink restored. No-op if already a symlink or if there
+# is no personal profile yet. Local and race-free (touches only these paths).
+function __claude_share_settings_local
+    set -l work (__claude_work_dir)/settings.local.json
+    set -l pers_dir (__claude_pers_dir)
+    set -l pers $pers_dir/settings.local.json
+
+    test -d $pers_dir; or return 0        # no personal profile yet
+    test -L $pers; and return 0           # already shared
+
+    if not test -e $work
+        # No shared target yet: adopt personal's file if present, else create empty.
+        mkdir -p (__claude_work_dir)
+        if test -e $pers
+            mv $pers $work
+        else
+            echo '{"permissions":{}}' >$work
+        end
+    else if test -e $pers
+        # Both exist: union personal's grants into the shared file, then drop it.
+        __claude_merge_permissions $work $pers >$work.tmp
+        and mv $work.tmp $work
+        and rm $pers
+    end
+
+    ln -s $work $pers
+end
+
 function claude-profiles-diff --description 'Show config differences between work and personal Claude profiles'
     set -l work $HOME/.claude
     set -l pers $HOME/.claude-personal

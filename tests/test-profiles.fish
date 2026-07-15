@@ -105,6 +105,29 @@ check "in sync afterwards" "" (__claude_profile_divergence)
 check "backup written" true (count $ROOT/.claude-personal/backups/profile-sync-*/settings.json >/dev/null 2>&1; and test -e (echo $ROOT/.claude-personal/backups/profile-sync-*/settings.json)[1]; and echo true; or echo false)
 
 echo
+echo "═══ Task 6: shared settings.local.json + self-heal ═══"
+setup
+source $SCRIPT
+# Both start as regular files with different grants → union into work, symlink personal.
+echo '{"permissions":{"allow":["Bash(git*)"]}}'  >$ROOT/.claude/settings.local.json
+echo '{"permissions":{"allow":["Read(*)"]}}'       >$ROOT/.claude-personal/settings.local.json
+__claude_share_settings_local
+check "personal is now a symlink" true (test -L $ROOT/.claude-personal/settings.local.json; and echo true; or echo false)
+check "symlink points at work" "$ROOT/.claude/settings.local.json" (readlink $ROOT/.claude-personal/settings.local.json)
+check "work grants unioned (git*)" true (jq -e '.permissions.allow | index("Bash(git*)") != null' $ROOT/.claude/settings.local.json >/dev/null; and echo true; or echo false)
+check "work grants unioned (Read)" true (jq -e '.permissions.allow | index("Read(*)") != null' $ROOT/.claude/settings.local.json >/dev/null; and echo true; or echo false)
+check "grant visible through personal symlink" true (jq -e '.permissions.allow | index("Read(*)") != null' $ROOT/.claude-personal/settings.local.json >/dev/null; and echo true; or echo false)
+# Idempotent: second call is a no-op, still a symlink.
+__claude_share_settings_local
+check "still a symlink after 2nd call" true (test -L $ROOT/.claude-personal/settings.local.json; and echo true; or echo false)
+# Self-heal: an atomic-rename write replaced the symlink with a regular file holding a new grant.
+rm $ROOT/.claude-personal/settings.local.json
+echo '{"permissions":{"allow":["WebFetch"]}}' >$ROOT/.claude-personal/settings.local.json
+__claude_share_settings_local
+check "self-heal restored symlink" true (test -L $ROOT/.claude-personal/settings.local.json; and echo true; or echo false)
+check "self-heal merged new grant into work" true (jq -e '.permissions.allow | index("WebFetch") != null' $ROOT/.claude/settings.local.json >/dev/null; and echo true; or echo false)
+
+echo
 echo "═══ TRIPWIRE ═══"
 set -l after (find $REAL_HOME/.claude/settings.json $REAL_HOME/.claude/settings.local.json \
     $REAL_HOME/.claude/plugins/installed_plugins.json -printf '%T@ %s %p\n' 2>/dev/null | sort | md5sum)
