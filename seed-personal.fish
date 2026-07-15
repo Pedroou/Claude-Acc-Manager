@@ -73,14 +73,6 @@ if test -d $work/projects
     echo "  ✓ projects (sessions + memory) copied"
 end
 
-# 5. Arm auto-sync. Until this marker exists the launcher refuses to sync in
-#    either direction, because an unseeded profile holds first-run defaults:
-#    newest on disk, but nearly empty, so mtime alone would let it win.
-touch $pers/.profile-seeded
-rm -f $pers/.autosync-declined # clear any earlier "don't ask me" choice
-echo "  ✓ auto-sync armed (.profile-seeded)"
-
 set -l email (jq -r '.oauthAccount.emailAddress // "unknown"' $pers/.claude.json)
 echo
 echo "Done. Personal profile seeded; logged-in account preserved: $email"
-echo "Config drift between the profiles will now be reconciled on launch (newest wins)."
