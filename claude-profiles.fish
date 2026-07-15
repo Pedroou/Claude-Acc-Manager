@@ -35,8 +35,14 @@ function __claude_profile_divergence
     set -l diffs
 
     # settings.json: compare only the shared surface (volatile keys stripped).
+    # Assign to a local first: a command substitution that yields no output makes
+    # a `set -l` var an empty list, and "$var" then expands to a single empty-string
+    # argument — avoiding the zero-argument breakage of bare `test (cmd) != (cmd)`.
+    # This idiom works on all supported fish versions (3.2+), unlike `"$(cmd)"`.
     if test -e $work/settings.json; or test -e $pers/settings.json
-        if test (__claude_shared $work/settings.json) != (__claude_shared $pers/settings.json)
+        set -l ws (__claude_shared $work/settings.json)
+        set -l ps (__claude_shared $pers/settings.json)
+        if test "$ws" != "$ps"
             set -a diffs settings.json
         end
     end
@@ -44,7 +50,9 @@ function __claude_profile_divergence
     # settings.local.json is shared via symlink (§4) — never compared here.
 
     # Plugin registry key list only; the cache is never inspected.
-    if test (__claude_plugin_keys $work) != (__claude_plugin_keys $pers)
+    set -l wp (__claude_plugin_keys $work)
+    set -l pp (__claude_plugin_keys $pers)
+    if test "$wp" != "$pp"
         set -a diffs plugins
     end
 

@@ -51,6 +51,15 @@ echo '{"model":"fable","hooks":{"x":1}}' >$ROOT/.claude-personal/settings.json
 echo '{"plugins":{"p1":{},"p2":{}}}' >$ROOT/.claude-personal/plugins/installed_plugins.json
 check "plugin-set diff IS drift" "plugins" (__claude_profile_divergence)
 
+# Regression: no plugin registry on either side must NOT be drift, and must not crash.
+rm -f $ROOT/.claude/plugins/installed_plugins.json $ROOT/.claude-personal/plugins/installed_plugins.json
+echo '{"hooks":{"a":1}}' >$ROOT/.claude/settings.json
+echo '{"hooks":{"a":1}}' >$ROOT/.claude-personal/settings.json
+check "no plugin registry on either side is NOT drift" "" (__claude_profile_divergence)
+# Regression: registry present on one side only → drift, no crash.
+echo '{"plugins":{"p1":{}}}' >$ROOT/.claude/plugins/installed_plugins.json
+check "registry on one side only IS drift" "plugins" (__claude_profile_divergence)
+
 echo
 echo "═══ TRIPWIRE ═══"
 set -l after (find $REAL_HOME/.claude/settings.json $REAL_HOME/.claude/settings.local.json \
