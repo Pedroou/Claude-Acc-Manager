@@ -118,81 +118,59 @@ function claude-profiles-diff --description 'Show config differences between wor
     test $found = 0; and echo "Profiles are in sync (settings.json, settings.local.json, plugin list)."
 end
 
-function claude-profiles-sync --description 'Copy settings + plugins from one Claude profile to the other'
-    set -l work $HOME/.claude
-    set -l pers $HOME/.claude-personal
-    set -l src
-    set -l dst
-    set -l srcname
-    set -l dstname
+function claude-profiles-sync --description 'Reconcile shared config from one Claude profile to the other'
+    set -l work (__claude_work_dir)
+    set -l pers (__claude_pers_dir)
+    set -l src; set -l dst; set -l srcname; set -l dstname
 
     switch "$argv[1]"
         case work-to-personal
-            set src $work
-            set dst $pers
-            set srcname work
-            set dstname personal
+            set src $work; set dst $pers; set srcname work; set dstname personal
         case personal-to-work
-            set src $pers
-            set dst $work
-            set srcname personal
-            set dstname work
+            set src $pers; set dst $work; set srcname personal; set dstname work
         case '*'
             echo "Usage: claude-profiles-sync work-to-personal|personal-to-work"
-            echo "Syncs settings.json, settings.local.json and the plugins directory."
+            echo "Copies settings.json's shared keys (model/effort/advisor/tui kept per-profile)"
+            echo "and the plugin registry. The plugin cache is never copied; settings.local.json"
+            echo "is shared and needs no sync."
             echo
             set -l d (__claude_profile_divergence)
             if test (count $d) -gt 0
-                echo "Currently diverged: "(string join ', ' $d)
+                echo "Currently drifted: "(string join ', ' $d)
             else
-                echo "Profiles are currently in sync."
+                echo "Profiles are in sync."
             end
             return 1
     end
 
-    set -l d (__claude_profile_divergence)
-    if test (count $d) -eq 0
-        echo "Profiles are already in sync — nothing to do."
-        return 0
-    end
-    echo "Diverged: "(string join ', ' $d)
-
-    read -l -P "Overwrite $dstname's settings & plugins with $srcname's? [y/N] " reply
-    if not string match -qi y -- "$reply"
-        echo "Aborted."
-        return 1
-    end
-
-    # Back up what's about to be overwritten
-    set -l bak $dst/backups/profile-sync-(date +%Y%m%d-%H%M%S)
+    set -l stamp (date +%Y%m%d-%H%M%S)
+    set -l bak $dst/backups/profile-sync-$stamp
     mkdir -p $bak
-    for f in settings.json settings.local.json
-        test -e $dst/$f; and cp -a $dst/$f $bak/
-    end
-    test -e $dst/plugins/installed_plugins.json
-    and cp -a $dst/plugins/installed_plugins.json $bak/plugins-installed_plugins.json
 
-    for f in settings.json settings.local.json
-        if test -e $src/$f
-            cp -a $src/$f $dst/$f
-        else if test -e $dst/$f
-            rm $dst/$f # source profile deleted it; backup kept in $bak
-        end
+    # settings.json — key-merge, preserving dst's volatile keys.
+    if test -e $src/settings.json
+        test -e $dst/settings.json; and cp -a $dst/settings.json $bak/
+        __claude_merge_settings $src/settings.json $dst/settings.json >$dst/settings.json.tmp
+        and mv $dst/settings.json.tmp $dst/settings.json
+        echo "↺ settings.json: $srcname → $dstname (shared keys; $dstname's model/effort/tui kept)"
     end
 
-    if test -d $src/plugins
-        rsync -a --delete $src/plugins/ $dst/plugins/
-        # The plugin registry stores absolute installPaths — repoint them at the destination
-        for j in $dst/plugins/*.json
-            sed -i "s|$src/plugins|$dst/plugins|g" $j
-        end
+    # plugin registry only — repoint installPaths; the cache re-fetches on demand.
+    set -l reg plugins/installed_plugins.json
+    if test -e $src/$reg
+        mkdir -p $dst/plugins
+        test -e $dst/$reg; and cp -a $dst/$reg $bak/plugins-installed_plugins.json
+        __claude_rewrite_registry $src/$reg "$src/plugins" "$dst/plugins" >$dst/$reg.tmp
+        and mv $dst/$reg.tmp $dst/$reg
+        echo "↺ plugins registry: $srcname → $dstname (cache re-fetched on demand)"
     end
 
+    echo "   backup: $bak"
     set -l after (__claude_profile_divergence)
     if test (count $after) -eq 0
-        echo "Synced $srcname → $dstname. Profiles are now in sync. (backup: $bak)"
+        echo "Profiles are now in sync."
     else
-        echo "Sync ran, but still diverged: "(string join ', ' $after)" (backup: $bak)"
+        echo "Still drifted: "(string join ', ' $after)
         return 1
     end
 end

@@ -85,6 +85,26 @@ check "matching prefix repointed" '"/p/plugins/p1"' (echo $r | jq -c '.plugins.p
 check "non-matching path untouched" '"/other/x"' (echo $r | jq -c '.plugins.p2.installPath')
 
 echo
+echo "═══ Task 5: claude-profiles-sync ═══"
+setup
+source $SCRIPT
+# work is source; personal keeps its own model, gains work's hooks + plugins.
+echo '{"model":"opus","hooks":{"deploy":1}}'  >$ROOT/.claude/settings.json
+echo '{"model":"fable"}'                        >$ROOT/.claude-personal/settings.json
+echo (string replace /W $ROOT/.claude '{"plugins":{"p1":{"installPath":"/W/plugins/p1"},"p2":{}}}') >$ROOT/.claude/plugins/installed_plugins.json
+echo '{"plugins":{}}' >$ROOT/.claude-personal/plugins/installed_plugins.json
+# sentinel cache file that must NOT be copied
+echo SENTINEL >$ROOT/.claude/plugins/BIG_CACHE_FILE
+claude-profiles-sync work-to-personal >/dev/null
+check "hooks propagated to personal" 1 (jq '.hooks.deploy' $ROOT/.claude-personal/settings.json)
+check "personal model preserved"     '"fable"' (jq -c '.model' $ROOT/.claude-personal/settings.json)
+check "plugin registry reconciled"   "p1,p2" (__claude_plugin_keys $ROOT/.claude-personal)
+check "installPath repointed to personal" "$ROOT/.claude-personal/plugins/p1" (jq -r '.plugins.p1.installPath' $ROOT/.claude-personal/plugins/installed_plugins.json)
+check "cache file NOT copied" false (test -e $ROOT/.claude-personal/plugins/BIG_CACHE_FILE; and echo true; or echo false)
+check "in sync afterwards" "" (__claude_profile_divergence)
+check "backup written" true (count $ROOT/.claude-personal/backups/profile-sync-*/settings.json >/dev/null 2>&1; and test -e (echo $ROOT/.claude-personal/backups/profile-sync-*/settings.json)[1]; and echo true; or echo false)
+
+echo
 echo "═══ TRIPWIRE ═══"
 set -l after (find $REAL_HOME/.claude/settings.json $REAL_HOME/.claude/settings.local.json \
     $REAL_HOME/.claude/plugins/installed_plugins.json -printf '%T@ %s %p\n' 2>/dev/null | sort | md5sum)
