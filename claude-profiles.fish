@@ -75,6 +75,18 @@ function __claude_merge_settings -a srcf dstf
     '
 end
 
+# Repoint plugin installPaths from SRCPREFIX to DSTPREFIX (registry only; the
+# cache is never copied). Prints to stdout; caller redirects.
+function __claude_rewrite_registry -a regf srcprefix dstprefix
+    jq --arg s "$srcprefix" --arg d "$dstprefix" '
+        .plugins |= with_entries(
+            if (.value | type == "object")
+               and ((.value.installPath? // "") | startswith($s))
+            then .value.installPath = ($d + (.value.installPath[($s | length):]))
+            else . end)
+    ' $regf
+end
+
 function claude-profiles-diff --description 'Show config differences between work and personal Claude profiles'
     set -l work $HOME/.claude
     set -l pers $HOME/.claude-personal

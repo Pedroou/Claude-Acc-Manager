@@ -76,6 +76,15 @@ check "no dst → src model dropped (volatile never imported)" "null" (echo $m2 
 check "no dst → src hooks kept" 1 (echo $m2 | jq '.hooks.a')
 
 echo
+echo "═══ Task 4: registry path rewrite ═══"
+setup
+source $SCRIPT
+echo '{"plugins":{"p1":{"installPath":"/w/plugins/p1"},"p2":{"installPath":"/other/x"}}}' >$ROOT/reg.json
+set -l r (__claude_rewrite_registry $ROOT/reg.json "/w/plugins" "/p/plugins" | jq -Sc .)
+check "matching prefix repointed" '"/p/plugins/p1"' (echo $r | jq -c '.plugins.p1.installPath')
+check "non-matching path untouched" '"/other/x"' (echo $r | jq -c '.plugins.p2.installPath')
+
+echo
 echo "═══ TRIPWIRE ═══"
 set -l after (find $REAL_HOME/.claude/settings.json $REAL_HOME/.claude/settings.local.json \
     $REAL_HOME/.claude/plugins/installed_plugins.json -printf '%T@ %s %p\n' 2>/dev/null | sort | md5sum)
