@@ -128,6 +128,18 @@ check "self-heal restored symlink" true (test -L $ROOT/.claude-personal/settings
 check "self-heal merged new grant into work" true (jq -e '.permissions.allow | index("WebFetch") != null' $ROOT/.claude/settings.local.json >/dev/null; and echo true; or echo false)
 
 echo
+echo "═══ Task 7: diff hides volatile keys ═══"
+setup
+source $SCRIPT
+echo '{"model":"opus","hooks":{"a":1}}'  >$ROOT/.claude/settings.json
+echo '{"model":"fable","hooks":{"a":1}}' >$ROOT/.claude-personal/settings.json
+echo '{"plugins":{"p1":{}}}' >$ROOT/.claude/plugins/installed_plugins.json
+echo '{"plugins":{"p1":{}}}' >$ROOT/.claude-personal/plugins/installed_plugins.json
+set -l out (claude-profiles-diff | string collect)
+check "in-sync reported (model diff hidden)" true (string match -q '*in sync*' -- "$out"; and echo true; or echo false)
+check "model value not shown as a diff" false (string match -q '*fable*' -- "$out"; and echo true; or echo false)
+
+echo
 echo "═══ TRIPWIRE ═══"
 set -l after (find $REAL_HOME/.claude/settings.json $REAL_HOME/.claude/settings.local.json \
     $REAL_HOME/.claude/plugins/installed_plugins.json -printf '%T@ %s %p\n' 2>/dev/null | sort | md5sum)

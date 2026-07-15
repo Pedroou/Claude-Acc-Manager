@@ -139,35 +139,34 @@ function __claude_share_settings_local
     ln -s $work $pers
 end
 
-function claude-profiles-diff --description 'Show config differences between work and personal Claude profiles'
-    set -l work $HOME/.claude
-    set -l pers $HOME/.claude-personal
+function claude-profiles-diff --description 'Show shared-config differences between work and personal Claude profiles'
+    set -l work (__claude_work_dir)
+    set -l pers (__claude_pers_dir)
     set -l found 0
 
-    for f in settings.json settings.local.json
-        if not cmp -s $work/$f $pers/$f 2>/dev/null
-            set found 1
-            set_color --bold; echo "── $f (work vs personal) ──"; set_color normal
-            diff -u --label work/$f --label personal/$f $work/$f $pers/$f
-        end
+    if test (__claude_shared $work/settings.json) != (__claude_shared $pers/settings.json)
+        set found 1
+        set_color --bold; echo "── settings.json (shared keys; model/effort/advisor/tui ignored) ──"; set_color normal
+        diff -u --label work --label personal \
+            (jq -S 'del(.model, .effortLevel, .advisorModel, .tui)' $work/settings.json 2>/dev/null | psub) \
+            (jq -S 'del(.model, .effortLevel, .advisorModel, .tui)' $pers/settings.json 2>/dev/null | psub)
     end
 
     set -l wplugins (jq -r '.plugins | keys[]' $work/plugins/installed_plugins.json 2>/dev/null | sort)
     set -l pplugins (jq -r '.plugins | keys[]' $pers/plugins/installed_plugins.json 2>/dev/null | sort)
     for p in $wplugins
         if not contains -- $p $pplugins
-            set found 1
-            echo "plugin only in work:     $p"
+            set found 1; echo "plugin only in work:     $p"
         end
     end
     for p in $pplugins
         if not contains -- $p $wplugins
-            set found 1
-            echo "plugin only in personal: $p"
+            set found 1; echo "plugin only in personal: $p"
         end
     end
 
-    test $found = 0; and echo "Profiles are in sync (settings.json, settings.local.json, plugin list)."
+    echo "(settings.local.json is shared between profiles — no diff.)"
+    test $found = 0; and echo "Profiles are in sync (shared settings.json + plugin list)."
 end
 
 function claude-profiles-sync --description 'Reconcile shared config from one Claude profile to the other'
