@@ -140,6 +140,26 @@ check "in-sync reported (model diff hidden)" true (string match -q '*in sync*' -
 check "model value not shown as a diff" false (string match -q '*fable*' -- "$out"; and echo true; or echo false)
 
 echo
+echo "═══ Task 8: prelaunch direction + non-interactive safety ═══"
+setup
+source $SCRIPT
+# Drift present; last run = work → hint must say work-to-personal, and must NOT sync.
+echo '{"model":"opus","hooks":{"a":1}}'  >$ROOT/.claude/settings.json
+echo '{"model":"fable","hooks":{"a":2}}' >$ROOT/.claude-personal/settings.json
+echo '{"plugins":{}}' >$ROOT/.claude/plugins/installed_plugins.json
+echo '{"plugins":{}}' >$ROOT/.claude-personal/plugins/installed_plugins.json
+set -l out (__claude_prelaunch work work </dev/null 2>&1 | string collect)
+check "hint shows work→personal direction" true (string match -q '*work-to-personal*' -- "$out"; and echo true; or echo false)
+check "non-interactive did NOT sync (personal hooks untouched)" 2 (jq '.hooks.a' $ROOT/.claude-personal/settings.json)
+# last run = personal → direction flips.
+set -l out2 (__claude_prelaunch work personal </dev/null 2>&1 | string collect)
+check "hint shows personal→work direction" true (string match -q '*personal-to-work*' -- "$out2"; and echo true; or echo false)
+# In sync → prelaunch prints nothing about drift.
+echo '{"model":"fable","hooks":{"a":1}}' >$ROOT/.claude-personal/settings.json
+set -l out3 (__claude_prelaunch work work </dev/null 2>&1 | string collect)
+check "no drift → no warning" false (string match -q '*drifted*' -- "$out3"; and echo true; or echo false)
+
+echo
 echo "═══ TRIPWIRE ═══"
 set -l after (find $REAL_HOME/.claude/settings.json $REAL_HOME/.claude/settings.local.json \
     $REAL_HOME/.claude/plugins/installed_plugins.json -printf '%T@ %s %p\n' 2>/dev/null | sort | md5sum)

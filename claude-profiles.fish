@@ -226,25 +226,62 @@ function claude-profiles-sync --description 'Reconcile shared config from one Cl
     end
 end
 
+function __claude_last_profile
+    set -l p work
+    if test -f $HOME/.claude-last-profile
+        test (string trim <$HOME/.claude-last-profile) = personal; and set p personal
+    end
+    echo $p
+end
+
+# Pre-launch reconcile. LAST is the sync source of truth (the previously-run
+# profile); the other profile is the destination. Does not record last-profile
+# or launch — that stays in __claude_run so the current launch is never its own
+# source. Non-interactive shells get a one-line hint and never block.
+function __claude_prelaunch -a launched last
+    __claude_share_settings_local
+
+    set -l diverged (__claude_profile_divergence)
+    test (count $diverged) -gt 0; or return 0
+
+    set -l dst personal
+    test $last = personal; and set dst work
+    set -l dir "$last-to-$dst"
+
+    set_color --bold yellow
+    echo "⚠  Shared config drifted: "(string join ', ' $diverged)
+    set_color normal
+
+    if isatty stdin
+        read -l -P "   Sync $last→$dst now? [Y/n] " reply
+        if string match -qi 'n*' -- "$reply"
+            echo "   Skipped. Run 'claude-profiles-sync $dir' when you want to reconcile."
+        else
+            claude-profiles-sync $dir
+        end
+    else
+        echo "   Run 'claude-profiles-sync $dir' to reconcile."
+    end
+end
+
 function __claude_run
     set -l profile $argv[1]
     set -l rest $argv[2..]
+
+    # Source of truth = the profile run LAST (before this launch overwrites it).
+    # If the marker is absent (first ever launch), default to the launched one.
+    set -l last $profile
+    test -f $HOME/.claude-last-profile; and set last (__claude_last_profile)
+
+    __claude_prelaunch $profile $last
+
+    # Only now record the current launch, so it is never its own sync source.
     echo $profile >$HOME/.claude-last-profile
 
-    set -l diverged (__claude_profile_divergence)
-    if test (count $diverged) -gt 0
-        set_color --bold yellow
-        echo "⚠  Claude work/personal profiles have diverged: "(string join ', ' $diverged)
-        set_color normal
-        echo "   Run 'claude-profiles-diff' to inspect or 'claude-profiles-sync' to reconcile."
-        sleep 2 # fullscreen TUI hides the terminal right after launch — keep the warning readable
-    end
-
     if test "$profile" = personal
-        CLAUDE_CONFIG_DIR=$HOME/.claude-personal command claude $rest
+        CLAUDE_CONFIG_DIR=(__claude_pers_dir) command claude $rest
     else
         # Work = stock behavior: no CLAUDE_CONFIG_DIR, so state stays at ~/.claude.json.
-        # (Setting it, even to ~/.claude, makes claude look for .claude.json INSIDE the dir.)
         env -u CLAUDE_CONFIG_DIR claude $rest
     end
 end
