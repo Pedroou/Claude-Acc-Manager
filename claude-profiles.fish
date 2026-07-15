@@ -9,6 +9,17 @@
 # On every launch, warns if settings/plugins have diverged between the two
 # profiles (state caches like .claude.json are intentionally not compared).
 
+# Profile dirs are derived from $HOME on every call, never cached in a global:
+# a cached global is captured at load time and ignores a later $HOME, which
+# makes the code untestable and would point sync at the wrong dirs.
+function __claude_work_dir
+    echo $HOME/.claude
+end
+
+function __claude_pers_dir
+    echo $HOME/.claude-personal
+end
+
 function __claude_profile_divergence
     set -l work $HOME/.claude
     set -l pers $HOME/.claude-personal
