@@ -61,6 +61,21 @@ echo '{"plugins":{"p1":{}}}' >$ROOT/.claude/plugins/installed_plugins.json
 check "registry on one side only IS drift" "plugins" (__claude_profile_divergence)
 
 echo
+echo "═══ Task 3: key-merge preserves dst volatile ═══"
+setup
+source $SCRIPT
+echo '{"model":"opus","hooks":{"a":1},"tui":{"theme":"dark"}}'  >$ROOT/src.json
+echo '{"model":"fable","hooks":{"a":0},"tui":{"theme":"light"}}' >$ROOT/dst.json
+set -l m (__claude_merge_settings $ROOT/src.json $ROOT/dst.json | jq -Sc .)
+check "shared key taken from src" 1 (echo $m | jq '.hooks.a')
+check "dst model preserved"      '"fable"' (echo $m | jq -c '.model')
+check "dst tui preserved"        '"light"' (echo $m | jq -c '.tui.theme')
+# Missing dst → src shared surface only, no volatile leaks in.
+set -l m2 (__claude_merge_settings $ROOT/src.json $ROOT/nonexistent.json)
+check "no dst → src model dropped (volatile never imported)" "null" (echo $m2 | jq -c '.model')
+check "no dst → src hooks kept" 1 (echo $m2 | jq '.hooks.a')
+
+echo
 echo "═══ TRIPWIRE ═══"
 set -l after (find $REAL_HOME/.claude/settings.json $REAL_HOME/.claude/settings.local.json \
     $REAL_HOME/.claude/plugins/installed_plugins.json -printf '%T@ %s %p\n' 2>/dev/null | sort | md5sum)

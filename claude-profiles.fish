@@ -59,6 +59,22 @@ function __claude_profile_divergence
     string join \n $diffs
 end
 
+# Merge for sync: result = SRC's non-volatile keys + DST's own volatile keys.
+# Volatile keys therefore never cross profiles in either direction. Missing
+# files are treated as {}. Prints to stdout; caller redirects.
+function __claude_merge_settings -a srcf dstf
+    begin
+        cat $srcf 2>/dev/null; or echo '{}'
+        echo
+        cat $dstf 2>/dev/null; or echo '{}'
+    end | jq -s '
+        (.[0] | del(.model, .effortLevel, .advisorModel, .tui)) as $shared
+        | (.[1] | {model, effortLevel, advisorModel, tui}
+                | with_entries(select(.value != null))) as $vol
+        | $shared + $vol
+    '
+end
+
 function claude-profiles-diff --description 'Show config differences between work and personal Claude profiles'
     set -l work $HOME/.claude
     set -l pers $HOME/.claude-personal
