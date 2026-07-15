@@ -58,18 +58,23 @@ All in `claude-profiles.fish` (sourced from `~/.config/fish/conf.d` via the
 
 ### 1. Launchers — `claude`, `claude-work`, `claude-personal`
 
-Unchanged from v1 except for what happens before launch:
+Unchanged from v1 except for what happens before launch. Ordering matters
+(so "last run" in §3 means the *previous* run):
 
-- Record last profile (sticky `claude`), forward all flags.
-- Ensure the shared-`settings.local.json` invariant (§4 self-heal) — cheap,
-  local, race-free.
-- Compute **shared-surface drift** (§5) — comparison excludes volatile keys and
-  the plugin cache.
-- If drifted: print a one-line yellow warning naming what drifted, then a
-  single-keypress prompt (§3). If in sync: print nothing, launch immediately.
-- **No auto-copy. No `sleep`. No seed-gate. No enable-me prompt.** Launch is
-  strictly faster than v1's warning path and never writes another profile's
-  config unprompted.
+1. **Read** the previous `~/.claude-last-profile` value → `last` (the sync
+   source of truth for §3). Do this before overwriting it.
+2. Ensure the shared-`settings.local.json` invariant (§4 self-heal) — cheap,
+   local, race-free.
+3. Compute **shared-surface drift** (§5) — comparison excludes volatile keys and
+   the plugin cache.
+4. If drifted: print a one-line yellow warning naming what drifted, then the
+   `[Y/n]` prompt (§3) with direction `last`→other. If in sync: print nothing.
+5. **Record** the current profile to `~/.claude-last-profile`, forward all
+   flags, launch.
+
+- **No auto-copy. No `sleep`. No seed-gate. No enable-me prompt.** The only copy
+  that ever happens is one you confirm at the prompt (or run by hand). Launch is
+  strictly faster than v1's warning path.
 
 Non-interactive shells (`not isatty stdin`) skip the prompt entirely — they may
 print the one-line warning but never block.
@@ -97,21 +102,40 @@ The single deliberate reconcile action. Given an explicit direction (src → dst
 
 With no argument: print usage + current shared-surface drift summary, exit 1.
 
-### 3. Launch-time drift prompt (single keypress, explicit direction)
+### 3. Launch-time drift prompt (`[Y/n]`, direction = last profile run)
 
-A bare `[y/N]` is unsafe because it can't express direction: install a plugin on
-work, launch personal, blind-yes would remove it from work. So the prompt is:
+The direction is chosen automatically from **which profile was run last** — the
+value of `~/.claude-last-profile` *as it stands before this launch overwrites
+it*. The profile you were last working in is almost certainly where you made the
+change, so it is the source of truth (src); the other profile is the
+destination (dst). Because the direction is unambiguous, the prompt is a simple
+default-yes `[Y/n]`, and it always shows the direction so a wrong guess is
+visible before you confirm:
 
 ```
 ⚠  Shared config drifted: enabledPlugins, hooks
-   Reconcile? [w] work→personal   [p] personal→work   [s] skip
+   Sync work→personal now? [Y/n]
 ```
 
-One keypress. `w`/`p` call `claude-profiles-sync` in that direction then
-continue launching; `s` (and default / Enter / anything else) skips and
-launches. The full diff is always available via `claude-profiles-diff`. This
-keeps the "one key" convenience the user asked for while making a wrong-direction
-overwrite impossible-by-accident.
+- Enter / `y` / anything not starting with `n`: run `claude-profiles-sync`
+  src→dst, then continue launching.
+- `n`: skip and launch. The full diff stays available via `claude-profiles-diff`,
+  and `claude-profiles-sync <dir>` can be run by hand in either direction.
+
+**Timing (matches the user's model):** the current launch is *not yet* recorded
+when the prompt appears, so "last run" is genuinely the previous run, never the
+one being launched. Order inside the launcher: read previous last-profile →
+detect drift → prompt using it as src → **then** record the current profile.
+For the sticky `claude` command, "last run" equals the profile being launched
+(sticky reuses it), so the default direction is current→other — a sensible
+default. If `~/.claude-last-profile` is absent (first ever launch), src defaults
+to the profile being launched.
+
+**Known caveat (accepted):** change on work → launch personal → skip → launch
+personal again flips "last run" to personal, so a blind Enter would push
+personal's older config onto work. The shown direction lets you catch it, and
+the sync backs up every file it overwrites (§2.3), so it is recoverable. This is
+an accepted trade for the `[Y/n]` simplicity.
 
 ### 4. Shared `settings.local.json` + self-heal
 
@@ -198,7 +222,12 @@ tripwire asserting the real `~/.claude` is byte-identical before/after:
    a symlinked path in a throwaway config dir to determine in-place vs atomic;
    record the result and confirm §4's chosen path.
 7. Non-interactive launch never blocks on the prompt.
-8. Tripwire: real `~/.claude` and `~/.claude-personal` untouched by the suite.
+8. Direction = last run: with `~/.claude-last-profile` = `work` and drift
+   present, the prompt/auto-direction is `work→personal`; = `personal` ⇒
+   `personal→work`; absent ⇒ defaults to the profile being launched. The
+   current launch's profile is recorded only *after* the prompt (so it is never
+   its own source).
+9. Tripwire: real `~/.claude` and `~/.claude-personal` untouched by the suite.
 
 ## Non-goals
 
