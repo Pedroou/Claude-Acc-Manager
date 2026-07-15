@@ -31,6 +31,27 @@ check "work dir derives from HOME" "$ROOT/.claude" (__claude_work_dir)
 check "pers dir derives from HOME" "$ROOT/.claude-personal" (__claude_pers_dir)
 
 echo
+echo "═══ Task 2: drift ignores volatile keys ═══"
+setup
+source $SCRIPT
+# Same shared surface, differing model+tui only → NOT drift.
+echo '{"model":"opus","tui":{"theme":"dark"},"hooks":{"x":1}}'  >$ROOT/.claude/settings.json
+echo '{"model":"fable","tui":{"theme":"light"},"hooks":{"x":1}}' >$ROOT/.claude-personal/settings.json
+echo '{"plugins":{"p1":{}}}' >$ROOT/.claude/plugins/installed_plugins.json
+echo '{"plugins":{"p1":{}}}' >$ROOT/.claude-personal/plugins/installed_plugins.json
+check "model/tui-only diff is NOT drift" "" (__claude_profile_divergence)
+
+# Differing hooks → drift on settings.json.
+echo '{"model":"fable","hooks":{"x":2}}' >$ROOT/.claude-personal/settings.json
+check "hooks diff IS drift" "settings.json" (__claude_profile_divergence)
+
+# Differing plugin set → drift on plugins.
+echo '{"model":"opus","hooks":{"x":1}}' >$ROOT/.claude/settings.json
+echo '{"model":"fable","hooks":{"x":1}}' >$ROOT/.claude-personal/settings.json
+echo '{"plugins":{"p1":{},"p2":{}}}' >$ROOT/.claude-personal/plugins/installed_plugins.json
+check "plugin-set diff IS drift" "plugins" (__claude_profile_divergence)
+
+echo
 echo "═══ TRIPWIRE ═══"
 set -l after (find $REAL_HOME/.claude/settings.json $REAL_HOME/.claude/settings.local.json \
     $REAL_HOME/.claude/plugins/installed_plugins.json -printf '%T@ %s %p\n' 2>/dev/null | sort | md5sum)

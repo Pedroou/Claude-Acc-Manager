@@ -20,22 +20,31 @@ function __claude_pers_dir
     echo $HOME/.claude-personal
 end
 
+# Canonical (sorted, compact) JSON with volatile keys stripped, for comparison.
+function __claude_shared -a f
+    jq -Sc 'del(.model, .effortLevel, .advisorModel, .tui)' $f 2>/dev/null; or echo '{}'
+end
+
+function __claude_plugin_keys -a dir
+    jq -r '.plugins | keys | sort | join(",")' $dir/plugins/installed_plugins.json 2>/dev/null
+end
+
 function __claude_profile_divergence
-    set -l work $HOME/.claude
-    set -l pers $HOME/.claude-personal
+    set -l work (__claude_work_dir)
+    set -l pers (__claude_pers_dir)
     set -l diffs
 
-    for f in settings.json settings.local.json
-        if test -e $work/$f; or test -e $pers/$f
-            if not cmp -s $work/$f $pers/$f 2>/dev/null
-                set -a diffs $f
-            end
+    # settings.json: compare only the shared surface (volatile keys stripped).
+    if test -e $work/settings.json; or test -e $pers/settings.json
+        if test (__claude_shared $work/settings.json) != (__claude_shared $pers/settings.json)
+            set -a diffs settings.json
         end
     end
 
-    set -l wplugins (jq -r '.plugins | keys | sort | join(",")' $work/plugins/installed_plugins.json 2>/dev/null)
-    set -l pplugins (jq -r '.plugins | keys | sort | join(",")' $pers/plugins/installed_plugins.json 2>/dev/null)
-    if test "$wplugins" != "$pplugins"
+    # settings.local.json is shared via symlink (§4) — never compared here.
+
+    # Plugin registry key list only; the cache is never inspected.
+    if test (__claude_plugin_keys $work) != (__claude_plugin_keys $pers)
         set -a diffs plugins
     end
 
