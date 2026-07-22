@@ -8,6 +8,9 @@
 # All flags are forwarded, so `claude-personal -r`, `claude -c`, etc. work.
 # On every launch, warns if settings/plugins have diverged between the two
 # profiles (state caches like .claude.json are intentionally not compared).
+# Session/chat history (projects/, file-history/, history.jsonl) is 100%
+# shared: it lives in ~/.claude and the personal profile symlinks to it, so
+# /resume shows the same sessions from either account.
 
 # Profile dirs are derived from $HOME on every call, never cached in a global:
 # a cached global is captured at load time and ignores a later $HOME, which
@@ -139,6 +142,85 @@ function __claude_share_settings_local
     ln -s $work $pers
 end
 
+# Union of two prompt-history jsonl files, deduped, ordered by timestamp.
+# Prints to stdout; caller redirects. Falls back to plain union order if the
+# files contain anything jq can't parse.
+function __claude_merge_history -a af bf
+    set -l tmp (mktemp)
+    begin
+        cat $af 2>/dev/null
+        cat $bf 2>/dev/null
+    end | awk '!seen[$0]++' >$tmp
+    if not jq -sc 'sort_by(.timestamp // 0)[]' $tmp 2>/dev/null
+        cat $tmp
+    end
+    rm -f $tmp
+end
+
+# Share one state directory (projects/, file-history/) between profiles: merge
+# personal's copy into work's (union; newer file wins, overwritten work files
+# are backed up), park the merged-away personal dir under backups/, and leave a
+# symlink behind. Self-healing like __claude_share_settings_local: if anything
+# ever replaces the symlink with a real directory, the next launch merges it
+# back and restores the link. No-op if already a symlink or no personal profile.
+function __claude_share_state_dir -a rel
+    set -l work (__claude_work_dir)
+    set -l pers_dir (__claude_pers_dir)
+    set -l src $work/$rel
+    set -l dst $pers_dir/$rel
+
+    test -d $pers_dir; or return 0
+    test -L $dst; and return 0
+
+    mkdir -p $src
+    if test -d $dst
+        command -q rsync; or begin
+            echo "⚠  rsync not found; cannot share $rel between profiles" >&2
+            return 1
+        end
+        set -l stamp (date +%Y%m%d-%H%M%S)
+        mkdir -p $work/backups $pers_dir/backups
+        rsync -a --update --backup --backup-dir=$work/backups/$rel-overwritten-$stamp $dst/ $src/
+        and mv $dst $pers_dir/backups/$rel-merged-$stamp
+        or return 1
+    end
+    ln -s $src $dst
+end
+
+# Share history.jsonl (prompt history) the same way: merge once, then symlink.
+function __claude_share_history_file
+    set -l work (__claude_work_dir)
+    set -l pers_dir (__claude_pers_dir)
+    set -l wh $work/history.jsonl
+    set -l ph $pers_dir/history.jsonl
+
+    test -d $pers_dir; or return 0
+    test -L $ph; and return 0
+
+    if test -e $ph
+        __claude_merge_history $wh $ph >$wh.tmp
+        and mv $wh.tmp $wh
+        and rm $ph
+        or begin
+            rm -f $wh.tmp
+            return 1
+        end
+    else if not test -e $wh
+        touch $wh
+    end
+    ln -s $wh $ph
+end
+
+# Session/chat history is fully shared between profiles: transcripts + memory
+# (projects/), checkpoint data for /rewind (file-history/), and the prompt
+# history (history.jsonl) all live in the work profile; personal holds symlinks.
+# /resume therefore lists the same sessions from either profile.
+function __claude_share_sessions
+    __claude_share_state_dir projects
+    __claude_share_state_dir file-history
+    __claude_share_history_file
+end
+
 function claude-profiles-diff --description 'Show shared-config differences between work and personal Claude profiles'
     set -l work (__claude_work_dir)
     set -l pers (__claude_pers_dir)
@@ -240,6 +322,7 @@ end
 # source. Non-interactive shells get a one-line hint and never block.
 function __claude_prelaunch -a launched last
     __claude_share_settings_local
+    __claude_share_sessions
 
     set -l diverged (__claude_profile_divergence)
     test (count $diverged) -gt 0; or return 0

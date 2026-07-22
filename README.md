@@ -29,6 +29,21 @@ The `claude-profiles-sync` command remains for forcing a direction by hand.
 Set `CLAUDE_PROFILES_NO_AUTOSYNC=1` to disable auto-sync and go back to a plain
 drift warning.
 
+## Shared session history
+
+Session/chat history is **100% shared** between the profiles, so `/resume`
+lists the same sessions no matter which account you launch:
+
+- `projects/` (session transcripts + per-project memory),
+- `file-history/` (checkpoint data for `/rewind`), and
+- `history.jsonl` (prompt history)
+
+all live in `~/.claude`; the personal profile holds symlinks to them. The links
+are created — merging any existing personal history in first (union, newer file
+wins, everything else backed up) — on the first launch after install, and are
+self-healing: if anything ever replaces a symlink with a real file or
+directory, the next launch merges the strays back and restores the link.
+
 ### Why "newest wins" alone is not safe
 
 A profile you have only *logged into* is at first-run defaults: its config is
