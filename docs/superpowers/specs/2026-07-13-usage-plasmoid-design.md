@@ -198,7 +198,8 @@ URLs, so no helper process is required.
 - Optionally, the repo's top-level `install.fish` gains a prompt offering to run
   this after the shell-function install.
 
-Plasmoid id: `com.pedroou.claudeusage`.
+Plasmoid id: `com.claudeaccmanager.claudeusage` — named after the project, not
+the author, so the widget is installable by anyone without an identity collision.
 
 ## Open risks
 
