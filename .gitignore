@@ -1,0 +1,22 @@
+# Local agent/session state
+.superpowers/
+.claude/settings.local.json
+
+# Backups written by install.fish, seed-personal.fish and claude-profiles-sync.
+# These contain real profile config and must never be committed.
+*.bak
+*.pre-seed.bak
+*.pre-install.bak
+backups/
+
+# Profile data, in case a script is ever pointed at the repo by mistake
+.claude-personal/
+.credentials.json
+.claude-last-profile
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
