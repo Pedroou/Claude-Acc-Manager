@@ -6,6 +6,19 @@ set -g ROOT (mktemp -d)/sandbox
 set -g PASS 0
 set -g FAIL 0
 
+# Tripwire: the real session dirs must be untouched by this suite. Captured here,
+# before `setup` overrides $HOME with the sandbox — never hardcode a home path,
+# or both fingerprints come out empty and the check guards nothing.
+# %y is included so a directory silently replaced by a symlink is caught.
+function __session_fingerprint -a home
+    find $home/.claude/projects $home/.claude/file-history $home/.claude/history.jsonl \
+        $home/.claude-personal/projects $home/.claude-personal/file-history \
+        $home/.claude-personal/history.jsonl \
+        -maxdepth 0 -printf '%y %T@ %s %p\n' 2>/dev/null | sort | md5sum
+end
+set -g REAL_HOME $HOME
+set -g REAL_FP (__session_fingerprint $REAL_HOME)
+
 function check -a name expected actual
     if test "$expected" = "$actual"
         set PASS (math $PASS + 1); echo "  ✓ $name"
@@ -111,6 +124,10 @@ source $SCRIPT
 __claude_share_sessions
 check "empty personal still gets projects link" yes (is_link $ROOT/.claude-personal/projects)
 check "empty personal still gets history link" yes (is_link $ROOT/.claude-personal/history.jsonl)
+
+echo
+echo "═══ TRIPWIRE ═══"
+check "real session dirs untouched" "$REAL_FP" (__session_fingerprint $REAL_HOME)
 
 echo
 echo "════════════════════════════"
