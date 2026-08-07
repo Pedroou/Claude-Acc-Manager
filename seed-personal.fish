@@ -11,11 +11,18 @@
 #   - Merges ~/.claude.json into ~/.claude-personal/.claude.json, keeping the
 #     personal account's identity (oauthAccount, userID, model-access caches)
 #     but taking everything else (onboarding flags, tips, per-project state).
-#   - Copies settings.json, settings.local.json, history.jsonl, plans/,
-#     plugins/, and projects/ (session history + memory).
-#   - Rewrites absolute plugin installPaths to point at the personal dir.
-#   - Does NOT touch credentials, or work-org managed files
-#     (remote-settings.json, policy-limits.json).
+#   - Copies settings.json and plans/.
+#   - Copies the plugin *registry*, repointing installPaths at the personal dir.
+#
+# What it deliberately does NOT do:
+#   - Copy the plugins/ cache. It is gigabytes of re-fetchable git checkouts and
+#     holds per-instance state (.in_use markers); Claude re-fetches what it needs.
+#   - Copy settings.local.json, history.jsonl, projects/ or file-history/. Those
+#     are *shared* between profiles — the next launch of `claude` replaces them
+#     with symlinks into the work profile, so copying them here is pointless
+#     work that the launcher would immediately undo.
+#   - Touch credentials, or work-org managed files (remote-settings.json,
+#     policy-limits.json).
 
 set -l work $HOME/.claude
 set -l pers $HOME/.claude-personal
@@ -51,28 +58,34 @@ or begin
 end
 echo "  ✓ state file merged (backup: .claude.json.pre-seed.bak)"
 
-# 2. Copy configs
-for f in settings.json settings.local.json history.jsonl
-    test -e $work/$f; and cp -a $work/$f $pers/
-end
+# 2. Copy settings.json and plans/. settings.local.json and history.jsonl are
+#    shared via symlink by the launcher, so they are not copied here.
+test -e $work/settings.json; and cp -a $work/settings.json $pers/
 test -d $work/plans; and rsync -a $work/plans $pers/
-echo "  ✓ settings, history, plans copied"
+echo "  ✓ settings.json and plans copied"
 
-# 3. Plugins (mirror + repoint absolute installPaths)
-if test -d $work/plugins
-    rsync -a --delete $work/plugins/ $pers/plugins/
-    for j in $pers/plugins/*.json
-        sed -i "s|$work/plugins|$pers/plugins|g" $j
+# 3. Plugin registry only — repoint absolute installPaths at the personal dir.
+#    The cache is never copied; Claude re-fetches any missing checkout once.
+set -l reg plugins/installed_plugins.json
+if test -e $work/$reg
+    mkdir -p $pers/plugins
+    jq --arg s "$work/plugins" --arg d "$pers/plugins" '
+        .plugins |= with_entries(
+            if (.value | type == "object")
+               and ((.value.installPath? // "") | startswith($s))
+            then .value.installPath = ($d + (.value.installPath[($s | length):]))
+            else . end)
+    ' $work/$reg >$pers/$reg.tmp
+    and mv $pers/$reg.tmp $pers/$reg
+    or begin
+        rm -f $pers/$reg.tmp
+        echo "Error: plugin registry copy failed."
+        exit 1
     end
-    echo "  ✓ plugins copied and paths rewritten"
-end
-
-# 4. Session history + per-project memory
-if test -d $work/projects
-    rsync -a $work/projects/ $pers/projects/
-    echo "  ✓ projects (sessions + memory) copied"
+    echo "  ✓ plugin registry copied (cache re-fetched on demand)"
 end
 
 set -l email (jq -r '.oauthAccount.emailAddress // "unknown"' $pers/.claude.json)
 echo
 echo "Done. Personal profile seeded; logged-in account preserved: $email"
+echo "Run 'claude' once to establish the shared settings.local.json and session history."
