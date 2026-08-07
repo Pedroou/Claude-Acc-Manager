@@ -1,8 +1,11 @@
 # Claude usage plasmoid — design
 
 **Date:** 2026-07-13
-**Status:** approved for planning
-**Repo location:** `plasmoid/` inside Claude-Acc-Manager
+**Status:** **Design only — not implemented.** No widget code exists in this
+repo; the only artifact under `plasmoid/` is the captured API response used as a
+test fixture. This document is kept as a record of the design, not as a
+description of working software.
+**Planned repo location:** `plasmoid/` inside Claude-Acc-Manager
 
 ## Goal
 

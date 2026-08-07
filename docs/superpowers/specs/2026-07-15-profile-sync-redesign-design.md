@@ -5,7 +5,7 @@ Date: 2026-07-15
 ## Problem
 
 The launcher runs two Claude Code accounts side by side via separate config
-dirs (`~/.claude` = work, `~/.claude-personal` = personal). Commit `17ceffc`
+dirs (`~/.claude` = work, `~/.claude-personal` = personal). An earlier iteration
 ("Add automatic config sync between profiles") replaced the launch-time drift
 *warning* with launch-time *newest-wins auto-copy* of `settings.json`,
 `settings.local.json`, and the whole `plugins/` directory, gated behind a
@@ -157,11 +157,14 @@ correct regardless of how Claude Code writes:
   the symlink with a private file; self-heal re-merges and re-links on the next
   launch, losing nothing.
 
-Which one Claude actually does will be **verified empirically during
-implementation** (a sandbox test that drives a real settings.local write). If it
-turns out to be atomic-rename *and* the user finds self-heal's "propagates on
-next launch, not instantly" latency unacceptable, the fallback is to demote
-`settings.local.json` to the shared-on-demand bucket (§2) — no redesign needed.
+Which one Claude actually does was left **unverified, deliberately**: self-heal
+is correct either way, so the answer would not change the design. The
+atomic-rename case — the only one that needs handling — is covered by a test
+that simulates it (replace the symlink with a regular file holding a new grant,
+then assert the grant is unioned back and the link restored). If the
+"propagates on next launch, not instantly" latency ever becomes a problem, the
+fallback is to demote `settings.local.json` to the shared-on-demand bucket
+(§2) — no redesign needed.
 
 **Concurrency note:** two live instances granting a permission at the same
 instant do a read-modify-write of the whole file; last writer wins, so one grant
@@ -189,19 +192,22 @@ Unchanged in spirit: human-readable diff of the shared surface. Updated to (a)
 diff `settings.json` with volatile keys stripped so noise is hidden, (b) note
 `settings.local.json` is shared, (c) diff the plugin registry key list.
 
-## Cleanup / migration
+## Cleanup / migration — as shipped
 
-- Working tree already has `claude-profiles.fish` + `seed-personal.fish`
-  reverted to the pre-auto-sync blob (`834122f`) so nothing dangerous is live.
-- This redesign **rewrites** `claude-profiles.fish`, updates `seed-personal.fish`
-  (drop the `.profile-seeded` arming; seeding stays a plain one-time inherit and
-  additionally establishes the shared `settings.local.json` symlink), updates
-  `README.md`, and **deletes `tests/test-autosync.fish`** (it tests removed
-  machinery and hardcodes `/home/pedro`).
-- `install.fish` gains the one-time shared-`settings.local.json` setup (idempotent:
-  safe to re-run; a no-op once the symlink exists).
-- Ships as one new commit on `main` superseding `17ceffc`. History keeps the
-  experiment; `main` moves forward.
+- `claude-profiles.fish` was rewritten around the three buckets above.
+- `seed-personal.fish` no longer copies the `plugins/` cache (registry only,
+  with `installPath` rewritten), and no longer copies `settings.local.json`,
+  `history.jsonl` or `projects/` — those are shared, so the next launch would
+  replace the copies with symlinks anyway. The `.profile-seeded` gate is gone.
+- `README.md` was rewritten to describe this design.
+- `tests/test-autosync.fish` was deleted; it covered the removed machinery.
+  `tests/test-profiles.fish` and `tests/test-sessions.fish` replace it.
+- `install.fish` was **not** changed. The one-time shared-`settings.local.json`
+  setup originally planned for it turned out to be unnecessary: the launcher
+  runs the same idempotent self-heal on every launch (§4), which subsumes it.
+  Keeping the logic in one place avoids two implementations that can disagree.
+- Session history sharing (`projects/`, `file-history/`, `history.jsonl`) was
+  added afterwards, by the same symlink-plus-self-heal mechanism as §4.
 
 ## Testing
 
@@ -218,9 +224,8 @@ tripwire asserting the real `~/.claude` is byte-identical before/after:
 5. `settings.local.json` self-heal: seed a regular-file state with a grant work
    lacks ⇒ after launch, grant is unioned into the shared file and the symlink
    is restored.
-6. Empirical: drive a real `settings.local.json` write (headless claude) against
-   a symlinked path in a throwaway config dir to determine in-place vs atomic;
-   record the result and confirm §4's chosen path.
+6. Self-heal covers the atomic-rename case by simulation (see §4); no
+   headless-claude probe is needed, since both write styles are handled.
 7. Non-interactive launch never blocks on the prompt.
 8. Direction = last run: with `~/.claude-last-profile` = `work` and drift
    present, the prompt/auto-direction is `work→personal`; = `personal` ⇒
@@ -232,7 +237,10 @@ tripwire asserting the real `~/.claude` is byte-identical before/after:
 ## Non-goals
 
 - Sharing or syncing the plugin **cache** (re-fetchable; per-instance markers).
-- Syncing `.claude.json`, credentials, session history, or any state caches.
-- Any launch-time file copy between profiles.
+- Syncing `.claude.json`, credentials, or any state caches. (Session history is
+  not *synced* either — it is **shared** outright via symlinks, added after this
+  document; see "Cleanup / migration".)
+- Any launch-time file *copy* between profiles. Symlinking is not copying: the
+  one-time merge that establishes a link is the only exception.
 - A background daemon / watcher. Nothing runs except at launch and on the
   explicit sync command.
