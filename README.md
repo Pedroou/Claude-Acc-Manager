@@ -37,9 +37,11 @@ Then log in once per account:
 2. **Second profile** — run `claude-personal`, then `/login` with account #2.
    Don't let `/login` auto-open the browser; copy the URL and paste it into the
    Chrome profile signed in to the right claude.ai account.
-3. **Optional** — run `./seed-personal.fish` once to copy your existing
-   settings, plugins and onboarding state into the new profile so it doesn't
-   start from a blank first-run setup.
+3. **Recommended** — run `./seed-personal.fish` so the new profile inherits your
+   settings, plugins and onboarding state instead of starting at first-run
+   defaults. It keeps the new account's own identity, and `model` stays
+   per-profile, so pick that one yourself with `/model`. Safe to re-run: it
+   never overwrites a choice the second profile made for itself.
 
 Keep both claude.ai accounts logged in permanently by using two Chrome **user
 profiles** (avatar menu → Add profile). Separate cookie jars means no
@@ -125,6 +127,7 @@ widget was never built.
 ```fish
 fish --no-config tests/test-profiles.fish
 fish --no-config tests/test-sessions.fish
+fish --no-config tests/test-seed.fish
 ```
 
 Each suite builds a throwaway `$HOME`, runs the real code against it, and

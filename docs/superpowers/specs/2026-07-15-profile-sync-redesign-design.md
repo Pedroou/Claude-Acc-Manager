@@ -195,10 +195,18 @@ diff `settings.json` with volatile keys stripped so noise is hidden, (b) note
 ## Cleanup / migration — as shipped
 
 - `claude-profiles.fish` was rewritten around the three buckets above.
-- `seed-personal.fish` no longer copies the `plugins/` cache (registry only,
-  with `installPath` rewritten), and no longer copies `settings.local.json`,
-  `history.jsonl` or `projects/` — those are shared, so the next launch would
-  replace the copies with symlinks anyway. The `.profile-seeded` gate is gone.
+- `seed-personal.fish` was rebuilt around the same buckets. It now sources
+  `claude-profiles.fish` and **delegates**: `__claude_share_settings_local` and
+  `__claude_share_sessions` for the shared bucket, `claude-profiles-sync
+  work-to-personal` for the shared-on-demand bucket. The only logic left that is
+  unique to seeding is the `~/.claude.json` state-file merge, which nothing else
+  in the project touches. Consequences: the `plugins/` cache is never copied, the
+  personal profile's volatile keys survive seeding (it inherits the sync's
+  key-merge), and the `.profile-seeded` gate is gone. The merge overlays work's
+  non-identity keys onto personal's own state — not the reverse — so re-running
+  cannot drop state the personal profile accumulated by itself.
+- `tests/test-seed.fish` — **new**. Covers the above, including the re-run case
+  and the tripwire.
 - `README.md` was rewritten to describe this design.
 - `tests/test-autosync.fish` was deleted; it covered the removed machinery.
   `tests/test-profiles.fish` and `tests/test-sessions.fish` replace it.
