@@ -1,0 +1,136 @@
+#!/usr/bin/env -S fish --no-config
+# Print one JSON document describing every Claude Code session running right now,
+# across both profiles.
+#
+# Claude Code keeps a registry of its own live sessions at
+# <profile-dir>/sessions/<pid>.json, refreshed as the session changes state. The
+# fields read here are `status` (one of busy/shell/idle/waiting), `waitingFor`,
+# `needs`, `name`, `cwd` and `procStart`. Records are left behind when a session is
+# killed rather than exiting cleanly, so every record is checked against /proc
+# before it is reported: the process must still exist *and* its start time must
+# match, which is what rules out a recycled pid.
+#
+# The widget polls this a few times a second's worth of intervals, so it stays
+# down to two subprocesses total — the record bodies are read once with fish
+# builtins and handed to a single jq.
+#
+# Environment overrides (used by the test suite):
+#   CLAUDE_SESSIONS_PROC   root to look for <pid>/stat under, default /proc
+#
+# Exit status is 0 whenever a document was printed, including "nothing running".
+
+set -l proc_root /proc
+test -n "$CLAUDE_SESSIONS_PROC"; and set proc_root $CLAUDE_SESSIONS_PROC
+
+# Derived per run, never cached at load time: the test suite moves $HOME.
+set -l profile_ids work personal
+set -l profile_dirs $HOME/.claude $HOME/.claude-personal
+
+# Is `pid` still the same process that wrote this record?
+#
+# Field 22 of /proc/<pid>/stat is the process start time in clock ticks, which is
+# exactly what Claude Code stores as `procStart`. Field 2 is the executable name
+# in parentheses and may itself contain spaces or parens, so the fields are counted
+# from after the *last* ')' — where field 22 overall becomes field 20.
+function __cs_alive -a proc_root pid want_start
+    set -l statfile $proc_root/$pid/stat
+    test -r $statfile; or return 1
+    set -l line (cat $statfile 2>/dev/null | string collect)
+    test -n "$line"; or return 1
+    if test -z "$want_start"
+        return 0 # older record with no start time recorded: existence is all we have
+    end
+    set -l fields (string split -n ' ' -- (string replace -r '^.*\)' '' -- $line))
+    test (count $fields) -ge 20; or return 1
+    test "$fields[20]" = "$want_start"
+end
+
+set -l bodies
+set -l owners # index-aligned with $bodies: which profile each record came from
+set -l present
+
+for i in (seq (count $profile_ids))
+    set -l id $profile_ids[$i]
+    set -l dir $profile_dirs[$i]
+    test -d $dir; and set -a present $id
+
+    for record in $dir/sessions/*.json
+        test -f $record; or continue
+
+        set -l pid (string replace -r '\.json$' '' -- (basename $record))
+        string match -qr '^[0-9]+$' -- $pid; or continue
+
+        # A torn record — Claude Code rewriting the file while this reads it — is
+        # not valid JSON, and would fail the whole batch. Requiring a complete
+        # object drops just that one record and keeps the rest of the panel.
+        set -l body (cat $record 2>/dev/null | string collect | string trim)
+        string match -qr '^\{.*\}$' -- "$body"; or continue
+
+        set -l want_start (string match -gr '"procStart"\s*:\s*"([^"]*)"' -- "$body")
+        __cs_alive $proc_root $pid "$want_start"; or continue
+
+        set -a bodies "$body"
+        set -a owners $id
+    end
+end
+
+# fish concatenates a command substitution with an adjacent literal, so this is a
+# millisecond stamp without relying on `date +%N`, which uutils coreutils — the
+# default on this distro — does not accept a width for.
+set -l now (date +%s)000
+
+# Both profile ids are fixed literals, so the array needs no escaping.
+set -l owners_json '[]'
+test (count $owners) -gt 0; and set owners_json '["'(string join '","' $owners)'"]'
+set -l present_json '[]'
+test (count $present) -gt 0; and set present_json '["'(string join '","' $present)'"]'
+
+# Record bodies arrive on stdin, one JSON object per record, in the same order as
+# $owners — so a record's position is enough to say which profile it came from.
+printf '%s\n' $bodies | jq -n \
+    --argjson now $now \
+    --argjson owners $owners_json \
+    --argjson profiles $present_json '
+    def statusLabel($s):
+        {waiting: "Waiting", busy: "Working", shell: "Shell", idle: "Done"}[$s]
+        // (if ($s | length) > 0 then ($s[0:1] | ascii_upcase) + $s[1:] else "Unknown" end);
+    def statusState($s):
+        {waiting: "waiting", busy: "working", shell: "shell", idle: "done"}[$s] // "unknown";
+    def rank($st):
+        {waiting: 0, working: 1, shell: 2, done: 3}[$st] // 4;
+
+    [inputs] | to_entries | map(
+        .value as $r
+        | ($owners[.key] // "work") as $profile
+        | ($r.status // "") as $status
+        | statusState($status) as $state
+        | (($r.cwd // "") | split("/") | map(select(. != ""))) as $parts
+        | {
+            pid:             ($r.pid // 0),
+            profile:         $profile,
+            name:            ($r.name // $parts[-1] // "session"),
+            cwd:             ($r.cwd // ""),
+            dir:             ($parts[-1] // "/"),
+            sessionId:       ($r.sessionId // ""),
+            kind:            ($r.kind // "interactive"),
+            status:          $status,
+            state:           $state,
+            label:           statusLabel($status),
+            detail:          ($r.needs // $r.waitingFor // $r.detail // ""),
+            startedAt:       ($r.startedAt // 0),
+            statusUpdatedAt: ($r.statusUpdatedAt // $r.updatedAt // 0),
+            version:         ($r.version // ""),
+            rank:            rank($state)
+        }
+    )
+    | sort_by(.rank, -.statusUpdatedAt, .name) as $sessions
+    | {
+        generatedAt: $now,
+        profiles: $profiles,
+        counts: (
+            {waiting: 0, working: 0, shell: 0, done: 0, unknown: 0}
+            + ($sessions | group_by(.state) | map({key: .[0].state, value: length}) | from_entries)
+            + {total: ($sessions | length)}
+        ),
+        sessions: $sessions
+    }'

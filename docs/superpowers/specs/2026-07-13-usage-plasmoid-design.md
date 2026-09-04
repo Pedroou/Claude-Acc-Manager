@@ -1,11 +1,13 @@
 # Claude usage plasmoid — design
 
 **Date:** 2026-07-13
-**Status:** **Design only — not implemented.** No widget code exists in this
-repo; the only artifact under `plasmoid/` is the captured API response used as a
-test fixture. This document is kept as a record of the design, not as a
-description of working software.
-**Planned repo location:** `plasmoid/` inside Claude-Acc-Manager
+**Status:** **Design only — never implemented, and not planned.** This document
+is kept as a record of the design, not as a description of working software. Its
+one surviving artifact is the captured API response at
+`docs/superpowers/specs/fixtures/usage-work.json`.
+**Planned repo location:** `plasmoid/` — since taken by a different widget, the
+session monitor described in `2026-09-04-sessions-widget-design.md`. Anyone
+picking this design up would need to pick a new home for it.
 
 ## Goal
 
@@ -46,7 +48,7 @@ never logged or written anywhere by this widget.
 
 ### Response shape (relevant fields)
 
-A captured real response lives at `plasmoid/test/fixtures/usage-work.json`. The
+A captured real response lives at `docs/superpowers/specs/fixtures/usage-work.json`. The
 fields this widget uses:
 
 - `five_hour`  → `{ utilization: <number 0..100>, resets_at: <ISO8601> }`

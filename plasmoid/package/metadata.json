@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Id": "com.claudeaccmanager.claudesessions",
+        "Name": "Claude Sessions",
+        "Description": "Shows which of your running Claude Code chats are working, waiting on you, or done",
+        "Icon": "claude-sessions",
+        "Category": "System Information",
+        "License": "MIT",
+        "Version": "1.0.0",
+        "Website": "https://github.com/Pedroou/Claude-Acc-Manager",
+        "Authors": [
+            {
+                "Name": "Claude-Acc-Manager"
+            }
+        ]
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

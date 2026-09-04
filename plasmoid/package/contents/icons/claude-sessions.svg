@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+  <defs>
+    <style type="text/css" id="current-color-scheme">
+      .ColorScheme-Text { color: #232629; }
+    </style>
+  </defs>
+  <!-- The same rails the widget draws: one bar per session, tallest when blocked. -->
+  <g class="ColorScheme-Text" fill="currentColor">
+    <rect x="4" y="4" width="3" height="14" rx="1.5"/>
+    <rect x="9.5" y="8" width="3" height="10" rx="1.5" opacity="0.75"/>
+    <rect x="15" y="11.5" width="3" height="6.5" rx="1.5" opacity="0.5"/>
+  </g>
+</svg>

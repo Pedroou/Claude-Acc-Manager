@@ -108,6 +108,37 @@ registry moves; the destination re-fetches what it's missing.
 
 </details>
 
+## Panel widget
+
+A Plasma 6 widget that shows what every running Claude Code session is doing —
+across both profiles — so you can tell from the panel whether one of them is
+blocked on you.
+
+Needs Plasma 6 and `kpackagetool6` on top of the requirements above.
+
+```fish
+./plasmoid/install.fish     # then: right-click the panel → Add Widgets → "Claude Sessions"
+```
+
+Each session is a bar: tallest and amber when it is **waiting** on you, then
+**working**, **shell**, and **done** (finished, ready for your next prompt). The
+panel shows the bars plus a running total; the popup lists the sessions with
+anything blocked at the top, says what it is blocked on, and how long it has been
+that way. Clicking a row shows its folder, session id, pid and version.
+
+It reads the registry Claude Code already keeps at
+`<profile>/sessions/<pid>.json` — no hooks, no API calls, no credentials — and
+checks each record against `/proc` so a session that was killed rather than
+closed doesn't linger in the list. The collector is a plain command, useful on
+its own:
+
+```fish
+./plasmoid/package/contents/scripts/claude-sessions | jq
+```
+
+Upgrading the widget while it's already on the panel needs a shell restart —
+Plasma caches applet QML. `install.fish` prints the command.
+
 ## Notes
 
 "Work" just means *whichever account lives in the default `~/.claude`
@@ -119,8 +150,10 @@ mapping and stay consistent.
 
 `docs/superpowers/specs/` holds the design write-ups — the profile-sync
 redesign explains why launch-time auto-copying was removed in favour of the
-three buckets above. The usage-plasmoid document is a **design only**; that
-widget was never built.
+three buckets above, and the sessions-widget document covers the panel widget,
+including why the session registry is the right thing to read. The
+usage-plasmoid document is a **design only**; that widget was never built and
+isn't planned.
 
 ## Tests
 
@@ -128,7 +161,17 @@ widget was never built.
 fish --no-config tests/test-profiles.fish
 fish --no-config tests/test-sessions.fish
 fish --no-config tests/test-seed.fish
+fish --no-config tests/test-widget.fish
 ```
 
 Each suite builds a throwaway `$HOME`, runs the real code against it, and
-asserts your actual `~/.claude` was untouched.
+asserts your actual `~/.claude` was untouched. The widget suite builds a
+throwaway `/proc` too, so it can test what happens to a record whose process is
+gone or whose pid has been recycled.
+
+The widget's display logic is plain JavaScript with no Qt dependency, so it is
+tested under node:
+
+```fish
+node --test plasmoid/test/sessions.test.js
+```

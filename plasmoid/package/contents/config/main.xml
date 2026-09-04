@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+                          http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="refreshInterval" type="Int">
+      <label>Seconds between checks while the popup is closed.</label>
+      <default>5</default>
+      <min>1</min>
+      <max>60</max>
+    </entry>
+    <entry name="showDone" type="Bool">
+      <label>List sessions that have finished and are waiting for a prompt.</label>
+      <default>true</default>
+    </entry>
+    <entry name="attentionWhenWaiting" type="Bool">
+      <label>Mark the widget as needing attention while a session is blocked.</label>
+      <default>true</default>
+    </entry>
+  </group>
+</kcfg>
