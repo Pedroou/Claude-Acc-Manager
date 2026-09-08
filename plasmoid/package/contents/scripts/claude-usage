@@ -1,0 +1,102 @@
+#!/usr/bin/env -S fish --no-config
+# Print each profile's plan usage, as one JSON document.
+#
+# The percentages behind Claude Code's own /usage view come from an authenticated
+# call to the endpoint below, with the bearer token Claude Code already stores per
+# profile. Nothing is written and no token is ever logged: it is handed to curl
+# through stdin rather than argv, so it does not show up in the process list.
+#
+# This is a Claude Code internal, not documented API. It is called at most once
+# every few minutes — plan limits move slowly — and a failure is reported as a
+# state rather than left to look like zero usage.
+#
+# Environment overrides (used by the test suite):
+#   CLAUDE_USAGE_FIXTURE  read this file instead of calling the API
+#
+# Exit status is 0 whenever a document was printed, including "nothing to show".
+
+set -l endpoint https://api.anthropic.com/api/oauth/usage
+
+set -l profile_ids work personal
+set -l profile_dirs $HOME/.claude $HOME/.claude-personal
+
+# One profile's bars, or the reason there are none. Prints a JSON object.
+function __cu_profile -a id dir endpoint
+    set -l credentials $dir/.credentials.json
+
+    if not test -r $credentials
+        jq -n --arg id $id '{id: $id, state: "absent", bars: []}'
+        return
+    end
+
+    set -l token (jq -r '.claudeAiOauth.accessToken // empty' $credentials 2>/dev/null)
+    set -l expires (jq -r '.claudeAiOauth.expiresAt // empty' $credentials 2>/dev/null)
+
+    if test -z "$token"
+        jq -n --arg id $id '{id: $id, state: "absent", bars: []}'
+        return
+    end
+
+    # A token past its expiry would just come back 401. Saying so up front is
+    # both faster and a better message than "the request failed".
+    if test -n "$expires"
+        set -l now_ms (date +%s)000
+        if test "$expires" -lt "$now_ms" 2>/dev/null
+            jq -n --arg id $id '{id: $id, state: "expired", bars: []}'
+            return
+        end
+    end
+
+    set -l body
+    if test -n "$CLAUDE_USAGE_FIXTURE"
+        set body (string collect <$CLAUDE_USAGE_FIXTURE 2>/dev/null)
+    else
+        # --config on stdin keeps the token out of argv, where every other
+        # process on the machine could read it.
+        set body (printf 'url = "%s"\nheader = "Authorization: Bearer %s"\nheader = "anthropic-beta: oauth-2025-04-20"\nheader = "Content-Type: application/json"\n' \
+            $endpoint $token | curl --silent --show-error --max-time 8 --config - 2>/dev/null | string collect)
+    end
+
+    if test -z "$body"
+        jq -n --arg id $id '{id: $id, state: "error", bars: []}'
+        return
+    end
+
+    # `limits[]` already carries percent, severity and reset time per limit, and
+    # names the model a scoped limit belongs to — so the bars on offer are
+    # whatever the plan actually has, not a hardcoded three.
+    echo $body | jq -c --arg id $id '
+        def barLabel($l):
+            if $l.kind == "session" then "Session"
+            elif $l.kind == "weekly_all" then "Weekly"
+            else ($l.scope.model.display_name // "Scoped") end;
+        def barId($l):
+            if $l.kind == "session" then "session"
+            elif $l.kind == "weekly_all" then "weekly"
+            else "scoped:" + ($l.scope.model.display_name // "other") end;
+
+        {
+            id: $id,
+            state: "ok",
+            bars: [ (.limits // [])[]
+                | select(.percent != null)
+                | {
+                    id: barId(.),
+                    label: barLabel(.),
+                    percent: (.percent // 0),
+                    severity: (.severity // "normal"),
+                    resetsAt: .resets_at,
+                    active: (.is_active == true)
+                  } ]
+        }' 2>/dev/null
+
+    or jq -n --arg id $id '{id: $id, state: "error", bars: []}'
+end
+
+set -l parts
+for i in (seq (count $profile_ids))
+    set -a parts (__cu_profile $profile_ids[$i] $profile_dirs[$i] $endpoint)
+end
+
+set -l now (date +%s)000
+printf '%s\n' $parts | jq -s -c --argjson now $now '{fetchedAt: $now, profiles: .}'

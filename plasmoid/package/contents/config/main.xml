@@ -5,10 +5,18 @@
                           http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
   <kcfgfile name=""/>
   <group name="General">
+
     <entry name="refreshInterval" type="Int">
       <label>Seconds between checks while the popup is closed.</label>
       <default>5</default>
       <min>1</min>
+      <max>60</max>
+    </entry>
+    <entry name="maxPopupHeight" type="Int">
+      <label>Tallest the popup may grow, in grid units. It shrinks to fit fewer
+      sessions and scrolls past this.</label>
+      <default>21</default>
+      <min>8</min>
       <max>60</max>
     </entry>
     <entry name="showDone" type="Bool">
@@ -19,5 +27,93 @@
       <label>Mark the widget as needing attention while a session is blocked.</label>
       <default>true</default>
     </entry>
+    <entry name="showTotal" type="Bool">
+      <label>Show the session count beside the bars in the panel.</label>
+      <default>true</default>
+    </entry>
+
+    <!-- Colours. The defaults live in code/sessions.js so the QML and the node
+         tests agree on them; these are the same values, since kcfg cannot read
+         a default out of JavaScript. Keep the two in step. -->
+    <entry name="customColors" type="Bool">
+      <label>Use the colours below instead of the built-in ones.</label>
+      <default>false</default>
+    </entry>
+    <entry name="colorWaiting" type="Color">
+      <default>#f97316</default>
+    </entry>
+    <entry name="colorError" type="Color">
+      <default>#ef4444</default>
+    </entry>
+    <entry name="colorRunning" type="Color">
+      <default>#eab308</default>
+    </entry>
+    <entry name="colorWorking" type="Color">
+      <default>#06b6d4</default>
+    </entry>
+    <entry name="colorShell" type="Color">
+      <default>#94a3b8</default>
+    </entry>
+    <entry name="colorDone" type="Color">
+      <default>#22c55e</default>
+    </entry>
+
+    <!-- Which rows an expanded session shows. Profile, Uptime and Directory are
+         not optional: they are what the expansion is for. -->
+    <entry name="detailRepository" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="detailBranch" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="detailSession" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="detailProcess" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="detailVersion" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="branchSeparate" type="Bool">
+      <label>Give the branch its own row instead of appending it to the
+      repository.</label>
+      <default>false</default>
+    </entry>
+    <entry name="shortLabels" type="Bool">
+      <label>Abbreviate Directory and Repository to Dir and Repo.</label>
+      <default>false</default>
+    </entry>
+
+    <!-- Plan usage. This is the only part of the widget that talks to the
+         network, so it is the only part with an off switch. -->
+    <entry name="showUsage" type="Bool">
+      <label>Show each profile's plan usage under the session list.</label>
+      <default>true</default>
+    </entry>
+    <entry name="usageProfile" type="String">
+      <label>Which profile's usage bar shows while the selector is collapsed.</label>
+      <default>work</default>
+    </entry>
+    <entry name="usageExpanded" type="Bool">
+      <default>false</default>
+    </entry>
+    <entry name="usageBarWork" type="String">
+      <default>session</default>
+    </entry>
+    <entry name="usageBarPersonal" type="String">
+      <default>session</default>
+    </entry>
+
+    <!-- Runtime state the popup owns, kept here so it survives a restart. -->
+    <entry name="censorNames" type="Bool">
+      <label>Blank out session names and their second line.</label>
+      <default>false</default>
+    </entry>
+    <entry name="nicknames" type="String">
+      <label>Widget-local session names, as a JSON object keyed by session id.</label>
+      <default>{}</default>
+    </entry>
+
   </group>
 </kcfg>

@@ -1,11 +1,12 @@
 # Claude Sessions widget — requested changes
 
 **Captured:** 2026-09-04, from Pedro, verbatim.
-**Status:** none of these are implemented yet. The widget as committed alongside
-this file is the first version, before any of the list below.
+**Status as of 2026-09-08:** 1–30 are done. 31 is open and needs a decision that
+is not mine to make (see below). Two items landed differently than asked, both
+noted inline where they appear.
 
 Written down because the request came in on a Friday on the work PC; the work
-continues from the home PC.
+continued from the home PC.
 
 Two screenshots referenced in the list are saved next to it:
 
@@ -192,24 +193,50 @@ who's going to be using this, and i use both projects so it isnt an issue for me
 
 ---
 
+## What happened to each item
+
+**1–30: done.** Two of them did not land the way the list asked:
+
+- **25 — the interrupt button does not exist.** The list allowed for this
+  ("if it isnt just skip over this one!"), and it turned out to be the right
+  call. Claude Code reads Ctrl+C as a byte off a raw-mode terminal, and its real
+  signal handlers are `process.on("SIGINT", … shutdown(0))` and the same for
+  SIGTERM — both mean "shut down". A signal can end a session but cannot pause
+  one, so a button labelled "interrupt" would have quietly ended sessions. The
+  **end** half of the item is there and works, via SIGTERM, asking once first.
+  Doing this properly would mean speaking the undocumented peer protocol on the
+  session's `messagingSocketPath`.
+- **9 — "Running" covers commands and scripts, but not subagents.** Bash tool
+  calls are direct child shells of the session process, so they are visible in
+  `/proc` and the running command is even shown on the row. Subagents run inside
+  the process and leave no trace, so a session thinking through a subagent still
+  reads as **Working**.
+
+Also worth knowing: **8** was resolved by **9** exactly as guessed — orange is
+now the one and only waiting colour everywhere, and yellow went to Running. And
+the **working** default (item 2) went to cyan rather than yellow: blue is the
+industry-standard "in progress" colour and was ruled out, yellow was the next
+most common but had just been claimed by Running, so cyan is the first choice
+left that stays legible on a dark panel.
+
+## Item 31 — still open
+
+Splitting the widget into its own repo is a one-command job now; what it needs is
+a decision, not work. `plasmoid/`, `tests/test-widget.fish` and
+`docs/superpowers/specs/2026-09-04-sessions-widget-design.md` are the whole
+widget, and nothing in it imports anything from outside `plasmoid/`. What has to
+be settled first: the repo's name, whether it is public (the list says LinkedIn
+and CV, which implies yes), and whether Claude-Acc-Manager keeps a copy or points
+at the new repo instead.
+
 ## Notes for picking this up
 
-These are one-line pointers only — no decisions have been made, and nothing below
-overrides the list above.
+These are one-line pointers only, kept from the original capture.
 
-- **Items 9 and 10 need research before design.** The widget reads Claude Code's
-  own session registry, whose `status` field is a closed set of four values
-  (`busy`, `shell`, `idle`, `waiting`) — see
-  `docs/superpowers/specs/2026-09-04-sessions-widget-design.md`. "Waiting on a
-  subagent/command" and "stopped with an error" are not among them, so check
-  whether the record carries them elsewhere (`tempo`, `state`, `detail`, `needs`
-  are all in the schema and currently unused) before assuming a new source is
-  needed.
-- **Item 29** wants the usage bars from the abandoned design at
-  `docs/superpowers/specs/2026-07-13-usage-plasmoid-design.md`, whose captured
-  API response is kept at `docs/superpowers/specs/fixtures/usage-work.json`.
-  That design was never built and its endpoint is undocumented — treat it as a
-  starting point, not a spec.
-- **Item 31** is the tidiest cut once the rest is done: `plasmoid/`, plus
-  `tests/test-widget.fish`, plus the sessions-widget design doc, are the whole
-  widget. Nothing outside `plasmoid/` is imported by it.
+- Items **9** and **10** were not in the registry and had to be worked out from
+  the process tree and the transcript; the design doc explains both, including
+  why the transcript is trusted for a stopped session and not a live one.
+- Item **29** revived the endpoint from the abandoned design at
+  `docs/superpowers/specs/2026-07-13-usage-plasmoid-design.md`. It still answers,
+  and its `limits[]` array names the bar types itself, so the menu in item **30**
+  lists whatever the plan has rather than a hardcoded three.

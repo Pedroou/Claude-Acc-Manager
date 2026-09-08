@@ -114,27 +114,49 @@ A Plasma 6 widget that shows what every running Claude Code session is doing —
 across both profiles — so you can tell from the panel whether one of them is
 blocked on you.
 
-Needs Plasma 6 and `kpackagetool6` on top of the requirements above.
+Needs Plasma 6, `kpackagetool6` and `curl` on top of the requirements above.
 
 ```fish
 ./plasmoid/install.fish     # then: right-click the panel → Add Widgets → "Claude Sessions"
 ```
 
-Each session is a bar: tallest and amber when it is **waiting** on you, then
-**working**, **shell**, and **done** (finished, ready for your next prompt). The
-panel shows the bars plus a running total; the popup lists the sessions with
-anything blocked at the top, says what it is blocked on, and how long it has been
-that way. Clicking a row shows its folder, session id, pid and version.
+Each session is a bar, coloured by what it is doing:
+
+| | | |
+|---|---|---|
+| **Waiting** | orange | blocked on you, and it says what for |
+| **Error** | red | its last turn failed, with the message |
+| **Running** | yellow | a command or script is executing, and it says which |
+| **Working** | cyan | Claude is generating |
+| **Shell** | slate | the terminal has been handed to a shell |
+| **Done** | green | finished, waiting for your next prompt |
+
+The panel shows the bars plus a running total, coloured by whichever state has
+the most sessions — unless something is waiting on you, which always wins. The
+popup lists them with anything blocked at the top, grows to fit and scrolls past
+a height you set, and ends with each profile's plan usage.
+
+Click a row for its details — profile, uptime, directory, repository, branch,
+session id, pid, version — and click any value to copy it. Right-click copies the
+lot, or, closed, the command to get back into that session. Hovering gives you a
+pencil (a nickname the widget keeps) and a close button that asks once. The eye
+in the header blanks every name and path for screen-sharing. All of it is
+configurable, colours included, and resets from one button.
 
 It reads the registry Claude Code already keeps at
-`<profile>/sessions/<pid>.json` — no hooks, no API calls, no credentials — and
-checks each record against `/proc` so a session that was killed rather than
-closed doesn't linger in the list. The collector is a plain command, useful on
-its own:
+`<profile>/sessions/<pid>.json`, checks each record against `/proc` so a session
+that was killed rather than closed doesn't linger, and works out the two states
+the registry has no idea about from the process tree and the transcript. The
+collectors are plain commands, useful on their own:
 
 ```fish
 ./plasmoid/package/contents/scripts/claude-sessions | jq
+./plasmoid/package/contents/scripts/claude-usage | jq
 ```
+
+Plan usage is the only part that touches the network — it asks Anthropic for your
+limits every five minutes using the login Claude Code already has, and it can be
+switched off.
 
 Upgrading the widget while it's already on the panel needs a shell restart —
 Plasma caches applet QML. `install.fish` prints the command.
@@ -174,4 +196,5 @@ tested under node:
 
 ```fish
 node --test plasmoid/test/sessions.test.js
+node --test plasmoid/test/usage.test.js
 ```

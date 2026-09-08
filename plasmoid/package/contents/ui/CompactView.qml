@@ -8,8 +8,8 @@ import org.kde.kirigami as Kirigami
 import "../code/sessions.js" as Sessions
 
 // The panel only has to answer one question: is anything waiting on me? So the
-// sessions are drawn as a small bar chart — one bar each, tallest when a session
-// is blocked — with the running total beside it.
+// sessions are drawn as bars — one each, in the colour of its state — with the
+// running total beside them in the colour of whichever state dominates.
 MouseArea {
     id: compact
 
@@ -70,27 +70,24 @@ MouseArea {
         columnSpacing: Kirigami.Units.smallSpacing
         rowSpacing: Kirigami.Units.smallSpacing
 
-        // The bars, baseline-aligned so the different heights read as a chart.
         GridLayout {
             id: cluster
             flow: compact.sideways ? GridLayout.TopToBottom : GridLayout.LeftToRight
             columnSpacing: compact.gap
             rowSpacing: compact.gap
-            Layout.alignment: compact.sideways ? Qt.AlignLeft | Qt.AlignVCenter
-                                               : Qt.AlignBottom | Qt.AlignHCenter
+            Layout.alignment: Qt.AlignCenter
 
             Repeater {
                 model: compact.railed
                 delegate: Rail {
                     required property var modelData
                     sessionState: modelData.state
-                    fraction: Sessions.railFraction(modelData.state)
+                    fraction: Sessions.railFraction()
                     color: compact.tone(modelData.state)
                     track: compact.track
                     thickness: compact.thickness
                     sideways: compact.sideways
-                    Layout.alignment: compact.sideways ? Qt.AlignLeft | Qt.AlignVCenter
-                                                       : Qt.AlignBottom | Qt.AlignHCenter
+                    Layout.alignment: Qt.AlignCenter
                 }
             }
 
@@ -105,13 +102,13 @@ MouseArea {
                 track: compact.track
                 thickness: compact.thickness
                 sideways: compact.sideways
-                Layout.alignment: compact.sideways ? Qt.AlignLeft | Qt.AlignVCenter
-                                                   : Qt.AlignBottom | Qt.AlignHCenter
+                Layout.alignment: Qt.AlignCenter
             }
         }
 
         PlasmaComponents3.Label {
             visible: compact.counts.total > 0
+                     && plasmoid.configuration.showTotal
             text: compact.counts.total
             color: compact.tone(Sessions.dominantState(compact.counts))
             // Scales with the panel, but stops growing before it starts

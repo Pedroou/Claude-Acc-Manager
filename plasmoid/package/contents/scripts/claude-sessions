@@ -5,17 +5,24 @@
 # Claude Code keeps a registry of its own live sessions at
 # <profile-dir>/sessions/<pid>.json, refreshed as the session changes state. The
 # fields read here are `status` (one of busy/shell/idle/waiting), `waitingFor`,
-# `needs`, `name`, `cwd` and `procStart`. Records are left behind when a session is
-# killed rather than exiting cleanly, so every record is checked against /proc
+# `needs`, `name`, `cwd` and `procStart`. Records are left behind when a session
+# is killed rather than exiting cleanly, so every record is checked against /proc
 # before it is reported: the process must still exist *and* its start time must
 # match, which is what rules out a recycled pid.
 #
-# The widget polls this a few times a second's worth of intervals, so it stays
-# down to two subprocesses total — the record bodies are read once with fish
-# builtins and handed to a single jq.
+# Two of the reported states are not in the registry at all and are worked out
+# here (see __cs_running and __cs_error below):
+#
+#   running  a shell command or script is executing inside a busy session
+#   error    an idle session whose last turn ended in an API error
+#
+# The widget polls this, so it stays cheap: record bodies and git metadata are
+# read with fish builtins, and the whole batch is handed to a single jq. Only
+# idle sessions pay for a transcript read, and only busy ones for a /proc walk.
 #
 # Environment overrides (used by the test suite):
-#   CLAUDE_SESSIONS_PROC   root to look for <pid>/stat under, default /proc
+#   CLAUDE_SESSIONS_PROC     root to look for <pid>/... under, default /proc
+#   CLAUDE_SESSIONS_NO_ERROR set to skip the transcript scan entirely
 #
 # Exit status is 0 whenever a document was printed, including "nothing running".
 
@@ -35,7 +42,7 @@ set -l profile_dirs $HOME/.claude $HOME/.claude-personal
 function __cs_alive -a proc_root pid want_start
     set -l statfile $proc_root/$pid/stat
     test -r $statfile; or return 1
-    set -l line (cat $statfile 2>/dev/null | string collect)
+    set -l line (string collect <$statfile 2>/dev/null)
     test -n "$line"; or return 1
     if test -z "$want_start"
         return 0 # older record with no start time recorded: existence is all we have
@@ -45,8 +52,140 @@ function __cs_alive -a proc_root pid want_start
     test "$fields[20]" = "$want_start"
 end
 
+# Is a command running inside this session?
+#
+# Claude Code runs every Bash tool call as a direct child shell of its own
+# process, so a child whose comm is a shell means "a command or script is
+# executing". Its long-lived children are MCP servers (`npm exec …`, `node`),
+# which are not shells, so the two never get confused. Subagents run inside the
+# process and leave no trace here — they stay indistinguishable from thinking.
+#
+# Prints the command being run, when it can be recovered, and returns 1 when
+# nothing is running.
+function __cs_running -a proc_root pid
+    # The main thread is where Claude Code's forks are attributed, and reading one
+    # file beats globbing the dozens of task/ entries a node process has.
+    set -l children_file $proc_root/$pid/task/$pid/children
+    test -r $children_file; or return 1
+    set -l kids (string split -n ' ' -- (string collect <$children_file 2>/dev/null))
+    test (count $kids) -gt 0; or return 1
+
+    for kid in $kids
+        set -l comm (string trim -- (string collect <$proc_root/$kid/comm 2>/dev/null))
+        contains -- "$comm" bash sh dash zsh fish ksh; or continue
+
+        # Claude Code wraps each command as `… && eval '<command>' < /dev/null …`
+        # after sourcing a shell snapshot. The eval'd text is the part worth
+        # showing. `string split0` reads the NUL-separated argv without a fork.
+        set -l argv_parts (string split0 <$proc_root/$kid/cmdline 2>/dev/null)
+        set -l shown ""
+        for part in $argv_parts
+            set -l found (string match -gr "eval '(.*)" -- "$part")
+            test -n "$found"; or continue
+            set shown (string replace -r "' *<[^<]*\$" '' -- "$found")
+            # The command was single-quoted for eval, so its own quotes arrive
+            # as the '"'"' dance. Undo that, then flatten it onto one line.
+            set shown (string replace -a "'\"'\"'" "'" -- "$shown")
+            set shown (string replace -ar '\s+' ' ' -- "$shown")
+            break
+        end
+        echo (string sub -l 120 -- (string trim -- "$shown"))
+        return 0
+    end
+    return 1
+end
+
+# Did this session's last turn end in an API error?
+#
+# The registry has no error state — a session that fails goes back to `idle` —
+# but the transcript records it, and unlike a live status the transcript is
+# reliable here precisely because the session has stopped writing. The last
+# assistant entry carries `isApiErrorMessage` and a message worth showing
+# ("You've hit your session limit · resets 6:40pm", "Login expired · Please run
+# /login"). Reading only the tail keeps the cost off the size of the file.
+#
+# Prints the message, and returns 1 when the last turn was fine.
+function __cs_error -a profile_dir session_id
+    test -n "$session_id"; or return 1
+    test -z "$CLAUDE_SESSIONS_NO_ERROR"; or return 1
+
+    set -l transcripts $profile_dir/projects/*/$session_id.jsonl
+    set -l transcript
+    for t in $transcripts
+        test -f $t; and set transcript $t; and break
+    end
+    test -n "$transcript"; or return 1
+
+    set -l tail_text (tail -c 32768 $transcript 2>/dev/null | string collect)
+    string match -q '*"isApiErrorMessage":true*' -- "$tail_text"; or return 1
+
+    # `fromjson?` drops the partial first line a byte-offset tail leaves behind.
+    # -s matters: without it jq runs the filter per line, and "the last assistant
+    # entry" silently becomes "any line that is an error".
+    set -l message (printf '%s' $tail_text | jq -Rsr '
+        [splits("\n") | fromjson? ]
+        | map(select(.type == "assistant"))
+        | last
+        | select(.isApiErrorMessage == true)
+        | (.message.content[0]?.text // "")
+        | .[0:200]' 2>/dev/null | string collect | string trim)
+
+    test -n "$message"; or return 1
+    echo $message
+end
+
+# The git repository a session is sitting in, as "name" and "branch".
+#
+# Walks up for a .git rather than shelling out to git, which would be two more
+# processes per session on every poll. Prints two lines: repository name, then
+# branch (either may be empty).
+function __cs_git -a dir
+    set -l root ""
+    set -l probe $dir
+    # Bounded so a pathological path can't spin, and absolute paths are shallow.
+    for i in (seq 40)
+        test -n "$probe"; or break
+        if test -e $probe/.git
+            set root $probe
+            break
+        end
+        set -l parent (path dirname $probe)
+        test "$parent" = "$probe"; and break
+        set probe $parent
+    end
+
+    if test -z "$root"
+        echo ""
+        echo ""
+        return
+    end
+
+    # A worktree or submodule has .git as a file pointing at the real directory.
+    set -l gitdir $root/.git
+    if test -f $gitdir
+        set -l pointer (string match -gr '^gitdir:\s*(.*)$' -- (string trim -- (string collect <$gitdir 2>/dev/null)))
+        if test -n "$pointer"
+            string match -qr '^/' -- $pointer; or set pointer $root/$pointer
+            set gitdir $pointer
+        end
+    end
+
+    set -l branch ""
+    if test -r $gitdir/HEAD
+        set -l head (string trim -- (string collect <$gitdir/HEAD 2>/dev/null))
+        set branch (string match -gr '^ref: refs/heads/(.*)$' -- $head)
+        if test -z "$branch"
+            # Detached: show the short sha, which is what git itself would.
+            string match -qr '^[0-9a-f]{7,40}$' -- $head; and set branch (string sub -l 7 -- $head)
+        end
+    end
+
+    echo (path basename $root)
+    echo $branch
+end
+
 set -l bodies
-set -l owners # index-aligned with $bodies: which profile each record came from
+set -l extras # index-aligned with $bodies: the fields worked out here
 set -l present
 
 for i in (seq (count $profile_ids))
@@ -63,14 +202,39 @@ for i in (seq (count $profile_ids))
         # A torn record — Claude Code rewriting the file while this reads it — is
         # not valid JSON, and would fail the whole batch. Requiring a complete
         # object drops just that one record and keeps the rest of the panel.
-        set -l body (cat $record 2>/dev/null | string collect | string trim)
+        set -l body (string trim -- (string collect <$record 2>/dev/null))
         string match -qr '^\{.*\}$' -- "$body"; or continue
 
         set -l want_start (string match -gr '"procStart"\s*:\s*"([^"]*)"' -- "$body")
         __cs_alive $proc_root $pid "$want_start"; or continue
 
+        set -l status_now (string match -gr '"status"\s*:\s*"([^"]*)"' -- "$body")
+        set -l session_id (string match -gr '"sessionId"\s*:\s*"([^"]*)"' -- "$body")
+        set -l cwd (string match -gr '"cwd"\s*:\s*"([^"]*)"' -- "$body")
+
+        # Only busy sessions can be running a command, and only idle ones can be
+        # sitting on a failed turn — so neither check runs where it can't apply.
+        set -l overlay ""
+        set -l detail ""
+        if test "$status_now" = busy
+            if set -l command (__cs_running $proc_root $pid)
+                set overlay running
+                set detail "$command"
+            end
+        else if test "$status_now" = idle
+            if set -l message (__cs_error $dir "$session_id")
+                set overlay error
+                set detail "$message"
+            end
+        end
+
+        set -l git_info (__cs_git "$cwd")
+
         set -a bodies "$body"
-        set -a owners $id
+        # Every value carries a leading ":" because jq still reads an argument
+        # beginning with "-" as an option, even after --args — and a command line
+        # or an error message can quite reasonably start with one. jq strips it.
+        set -a extras ":$id" ":$overlay" ":$detail" ":$git_info[1]" ":$git_info[2]"
     end
 end
 
@@ -79,44 +243,59 @@ end
 # default on this distro — does not accept a width for.
 set -l now (date +%s)000
 
-# Both profile ids are fixed literals, so the array needs no escaping.
-set -l owners_json '[]'
-test (count $owners) -gt 0; and set owners_json '["'(string join '","' $owners)'"]'
 set -l present_json '[]'
 test (count $present) -gt 0; and set present_json '["'(string join '","' $present)'"]'
 
 # Record bodies arrive on stdin, one JSON object per record, in the same order as
-# $owners — so a record's position is enough to say which profile it came from.
+# $extras — so a record's position is enough to pair it with what was worked out
+# for it above.
 printf '%s\n' $bodies | jq -n \
     --argjson now $now \
-    --argjson owners $owners_json \
     --argjson profiles $present_json '
     def statusLabel($s):
-        {waiting: "Waiting", busy: "Working", shell: "Shell", idle: "Done"}[$s]
+        {waiting: "Waiting", running: "Running", busy: "Working",
+         shell: "Shell", idle: "Done", error: "Error"}[$s]
         // (if ($s | length) > 0 then ($s[0:1] | ascii_upcase) + $s[1:] else "Unknown" end);
     def statusState($s):
-        {waiting: "waiting", busy: "working", shell: "shell", idle: "done"}[$s] // "unknown";
+        {waiting: "waiting", running: "running", busy: "working",
+         shell: "shell", idle: "done", error: "error"}[$s] // "unknown";
     def rank($st):
-        {waiting: 0, working: 1, shell: 2, done: 3}[$st] // 4;
+        {waiting: 0, error: 1, running: 2, working: 3, shell: 4, done: 5}[$st] // 6;
+
+    # Five positional arguments per session, in the order the records were read,
+    # each with the sentinel ":" the caller prefixed.
+    def arg($i): ($ARGS.positional[$i] // ":") | .[1:];
+    def extras($i): {
+        profile:      (arg($i * 5)     | if . == "" then "work" else . end),
+        overlay:       arg($i * 5 + 1),
+        overlayDetail: arg($i * 5 + 2),
+        repository:    arg($i * 5 + 3),
+        branch:        arg($i * 5 + 4)
+    };
 
     [inputs] | to_entries | map(
         .value as $r
-        | ($owners[.key] // "work") as $profile
-        | ($r.status // "") as $status
+        | extras(.key) as $x
+        # The two states worked out from /proc and the transcript stand in for the
+        # registry status; everything downstream treats them alike.
+        | (if ($x.overlay // "") != "" then $x.overlay else ($r.status // "") end) as $status
         | statusState($status) as $state
         | (($r.cwd // "") | split("/") | map(select(. != ""))) as $parts
         | {
             pid:             ($r.pid // 0),
-            profile:         $profile,
+            profile:         ($x.profile // "work"),
             name:            ($r.name // $parts[-1] // "session"),
             cwd:             ($r.cwd // ""),
             dir:             ($parts[-1] // "/"),
+            repository:      ($x.repository // ""),
+            branch:          ($x.branch // ""),
             sessionId:       ($r.sessionId // ""),
             kind:            ($r.kind // "interactive"),
             status:          $status,
             state:           $state,
             label:           statusLabel($status),
-            detail:          ($r.needs // $r.waitingFor // $r.detail // ""),
+            detail:          (if ($x.overlayDetail // "") != "" then $x.overlayDetail
+                              else ($r.needs // $r.waitingFor // $r.detail // "") end),
             startedAt:       ($r.startedAt // 0),
             statusUpdatedAt: ($r.statusUpdatedAt // $r.updatedAt // 0),
             version:         ($r.version // ""),
@@ -128,9 +307,9 @@ printf '%s\n' $bodies | jq -n \
         generatedAt: $now,
         profiles: $profiles,
         counts: (
-            {waiting: 0, working: 0, shell: 0, done: 0, unknown: 0}
+            {waiting: 0, error: 0, running: 0, working: 0, shell: 0, done: 0, unknown: 0}
             + ($sessions | group_by(.state) | map({key: .[0].state, value: length}) | from_entries)
             + {total: ($sessions | length)}
         ),
         sessions: $sessions
-    }'
+    }' --args $extras

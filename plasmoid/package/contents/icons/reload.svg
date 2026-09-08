@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+  <defs>
+    <style type="text/css" id="current-color-scheme">
+      .ColorScheme-Text { color: #232629; }
+    </style>
+  </defs>
+  <!-- One arrow round a circle, the way a browser draws reload. Breeze's own
+       view-refresh is a two-arrow cycle, which reads as "restart", not "reload".
+       The arc runs clockwise and stops at the top right; the triangle straddles
+       the ring there, pointing along the tangent so the motion is unambiguous. -->
+  <g class="ColorScheme-Text">
+    <path d="M 17.09 9.37 A 6.3 6.3 0 1 1 12.63 4.92"
+          fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="butt"/>
+    <path d="M 15.91 5.80 L 13.23 2.70 L 12.03 7.14 Z" fill="currentColor"/>
+  </g>
+</svg>
