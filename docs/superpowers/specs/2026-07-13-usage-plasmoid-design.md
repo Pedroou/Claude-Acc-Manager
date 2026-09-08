@@ -5,9 +5,11 @@
 is kept as a record of the design, not as a description of working software. Its
 one surviving artifact is the captured API response at
 `docs/superpowers/specs/fixtures/usage-work.json`.
-**Planned repo location:** `plasmoid/` — since taken by a different widget, the
-session monitor described in `2026-09-04-sessions-widget-design.md`. Anyone
-picking this design up would need to pick a new home for it.
+**Planned repo location:** `plasmoid/`, which no longer exists here. The usage
+bars themselves were eventually built, in
+[claude-sessions-widget](https://github.com/Pedroou/claude-sessions-widget) —
+the endpoint below still answers, and that widget calls it. This document is the
+record of the standalone widget that was never built.
 
 ## Goal
 

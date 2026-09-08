@@ -16,4 +16,4 @@ ln -sf $repo_dir/claude-profiles.fish $target
 echo "Installed: $target → $repo_dir/claude-profiles.fish"
 echo "Run 'exec fish' (or open a new terminal) to load it."
 echo
-echo "Panel widget (optional): ./plasmoid/install.fish"
+echo "Panel widget (optional): github.com/Pedroou/claude-sessions-widget"

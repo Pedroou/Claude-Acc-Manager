@@ -110,56 +110,15 @@ registry moves; the destination re-fetches what it's missing.
 
 ## Panel widget
 
-A Plasma 6 widget that shows what every running Claude Code session is doing —
-across both profiles — so you can tell from the panel whether one of them is
-blocked on you.
+The Plasma 6 widget that shows what every running Claude Code session is doing —
+across both profiles — now lives in its own repository:
 
-Needs Plasma 6, `kpackagetool6` and `curl` on top of the requirements above.
-
-```fish
-./plasmoid/install.fish     # then: right-click the panel → Add Widgets → "Claude Sessions"
-```
-
-Each session is a bar, coloured by what it is doing:
-
-| | | |
-|---|---|---|
-| **Waiting** | orange | blocked on you, and it says what for |
-| **Error** | red | its last turn failed, with the message |
-| **Running** | yellow | a command or script is executing, and it says which |
-| **Working** | cyan | Claude is generating |
-| **Shell** | slate | the terminal has been handed to a shell |
-| **Done** | green | finished, waiting for your next prompt |
-
-The panel shows the bars plus a running total, coloured by whichever state has
-the most sessions — unless something is waiting on you, which always wins. The
-popup lists them with anything blocked at the top, grows to fit and scrolls past
-a height you set, and ends with each profile's plan usage.
-
-Click a row for its details — profile, uptime, directory, repository, branch,
-session id, pid, version — and click any value to copy it. Right-click copies the
-lot, or, closed, the command to get back into that session. Hovering gives you a
-pencil (a nickname the widget keeps) and a close button that asks once. The eye
-in the header blanks every name and path for screen-sharing. All of it is
-configurable, colours included, and resets from one button.
+**[Pedroou/claude-sessions-widget](https://github.com/Pedroou/claude-sessions-widget)**
 
 It reads the registry Claude Code already keeps at
-`<profile>/sessions/<pid>.json`, checks each record against `/proc` so a session
-that was killed rather than closed doesn't linger, and works out the two states
-the registry has no idea about from the process tree and the transcript. The
-collectors are plain commands, useful on their own:
-
-```fish
-./plasmoid/package/contents/scripts/claude-sessions | jq
-./plasmoid/package/contents/scripts/claude-usage | jq
-```
-
-Plan usage is the only part that touches the network — it asks Anthropic for your
-limits every five minutes using the login Claude Code already has, and it can be
-switched off.
-
-Upgrading the widget while it's already on the panel needs a shell restart —
-Plasma caches applet QML. `install.fish` prints the command.
+`<profile>/sessions/<pid>.json`, so it works with the two profiles this project
+sets up without either side knowing about the other. Nothing here depends on it,
+and it depends on nothing here.
 
 ## Notes
 
@@ -172,10 +131,9 @@ mapping and stay consistent.
 
 `docs/superpowers/specs/` holds the design write-ups — the profile-sync
 redesign explains why launch-time auto-copying was removed in favour of the
-three buckets above, and the sessions-widget document covers the panel widget,
-including why the session registry is the right thing to read. The
-usage-plasmoid document is a **design only**; that widget was never built and
-isn't planned.
+three buckets above. The usage-plasmoid document is a **design only**; that
+widget was never built, though the endpoint it documented is now what feeds the
+usage bars in [claude-sessions-widget](https://github.com/Pedroou/claude-sessions-widget).
 
 ## Tests
 
@@ -183,18 +141,7 @@ isn't planned.
 fish --no-config tests/test-profiles.fish
 fish --no-config tests/test-sessions.fish
 fish --no-config tests/test-seed.fish
-fish --no-config tests/test-widget.fish
 ```
 
 Each suite builds a throwaway `$HOME`, runs the real code against it, and
-asserts your actual `~/.claude` was untouched. The widget suite builds a
-throwaway `/proc` too, so it can test what happens to a record whose process is
-gone or whose pid has been recycled.
-
-The widget's display logic is plain JavaScript with no Qt dependency, so it is
-tested under node:
-
-```fish
-node --test plasmoid/test/sessions.test.js
-node --test plasmoid/test/usage.test.js
-```
+asserts your actual `~/.claude` was untouched.
