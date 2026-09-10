@@ -316,6 +316,48 @@ function __claude_last_profile
     echo $p
 end
 
+# Browser automation must stay headed — agents have to be able to see what they
+# build. Headless was the default from 2026-08-11 to 2026-09-10 and cost a month
+# of blind UI work; this keeps the revert from quietly coming back, the same way
+# the commit-msg hook backstops the attribution setting. Runs pre-launch so the
+# config is clean before the MCP servers read it, and on BOTH profiles so a
+# stale value on one can never be synced onto the other. Never blocks a launch.
+function __claude_assert_headed -a dir
+    test -d $dir; or return 0
+    set -l filter 'walk(if type=="object" and (.args|type)=="array" then .args |= map(select((type=="string" and startswith("--headless")) | not)) else . end)'
+    set -l fixed
+
+    # 1. PLAYWRIGHT_MCP_HEADLESS in settings.json
+    set -l s $dir/settings.json
+    if jq -e '.env.PLAYWRIGHT_MCP_HEADLESS' $s >/dev/null 2>&1
+        if jq 'del(.env.PLAYWRIGHT_MCP_HEADLESS) | if .env == {} then del(.env) else . end' $s >$s.tmp 2>/dev/null
+            mv $s.tmp $s; and set -a fixed settings.json
+        else
+            rm -f $s.tmp
+        end
+    end
+
+    # 2. --headless in plugin MCP manifests. Two shapes live here: plugin.json
+    #    nests under .mcpServers, .mcp.json is a flat server map — walk covers both.
+    for m in $dir/plugins/cache/*/*/*/.claude-plugin/plugin.json $dir/plugins/cache/*/*/*/.mcp.json
+        test -f $m; or continue
+        set -l want (jq -Sc "$filter" $m 2>/dev/null)
+        test -n "$want"; or continue
+        test "$want" = (jq -Sc . $m 2>/dev/null); and continue
+        if jq "$filter" $m >$m.tmp 2>/dev/null
+            mv $m.tmp $m; and set -a fixed (string replace "$dir/plugins/cache/" '' $m)
+        else
+            rm -f $m.tmp
+        end
+    end
+
+    test (count $fixed) -gt 0; or return 0
+    set_color --bold yellow
+    echo "⚠  Re-stripped headless browser config in "(path basename $dir)": "(string join ', ' $fixed)
+    set_color normal
+    echo "   Browser automation stays headed — see ~/.claude/CLAUDE.md."
+end
+
 # Pre-launch reconcile. LAST is the sync source of truth (the previously-run
 # profile); the other profile is the destination. Does not record last-profile
 # or launch — that stays in __claude_run so the current launch is never its own
@@ -323,6 +365,8 @@ end
 function __claude_prelaunch -a launched last
     __claude_share_settings_local
     __claude_share_sessions
+    __claude_assert_headed (__claude_work_dir)
+    __claude_assert_headed (__claude_pers_dir)
 
     set -l diverged (__claude_profile_divergence)
     test (count $diverged) -gt 0; or return 0
