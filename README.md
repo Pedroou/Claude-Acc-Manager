@@ -48,9 +48,9 @@ claude-profiles                  # every profile, its account, and what's runnin
 ```
 
 The `●` is the one plain `claude` opens. `claude-profiles rename` and
-`claude-profiles remove` do what they say. Removing one only ever loses its
-login, because nothing else in it was its own. Profile names tab-complete after
-`claude`.
+`claude-profiles remove` do what they say. Removing a profile only ever loses
+its login: anything it still held joins the shared copy, and the rest is set
+aside in `~/.claude/backups/`. Profile names tab-complete after `claude`.
 
 ## What is shared
 
@@ -73,9 +73,9 @@ A few things you'd otherwise have to ask:
   nothing, and prints a line only if it actually changed something.
 - **A session is open in the other account. Is that a problem?** No. A merged
   settings change reaches it exactly as your own edit to `settings.json` would,
-  and every write is atomic. The one thing
-  that waits for a profile to be idle is merging in a copy of its history left
-  over from before it was shared, and that happens once.
+  and every write is atomic. The one thing that waits for a profile to be idle
+  is merging in a copy of its history left over from before it was shared, and
+  that happens once.
 - **Do I need to restart anything?** No.
 - **Does anything move?** Only the first time a profile is shared: whatever it
   had of its own joins the shared copy. Where two versions of the same file
