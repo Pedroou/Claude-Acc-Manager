@@ -1,147 +1,187 @@
-# Claude-Acc-Manager
+<div align="center">
 
-Run two Claude Code accounts — say a work Team seat and a personal Pro
-subscription — side by side, permanently logged in, with no `/login` switching.
-Fish shell only.
+<h1>claude-profiles</h1>
 
-Each account gets its own config directory. Session history and the permission
-allowlist are *shared* between them, per-account settings like `model` stay
-separate, and everything else syncs only when you say so.
+<p><b>Several Claude Code accounts, one Claude Code.</b></p>
 
-## Commands
+<p>
+<img alt="fish 3.5+" src="https://img.shields.io/badge/fish-3.5%2B-4aae47?style=flat-square&labelColor=2d333b">
+<a href="https://github.com/Pedroou/claude-profiles/actions/workflows/tests.yml"><img alt="tests" src="https://img.shields.io/github/actions/workflow/status/Pedroou/claude-profiles/tests.yml?branch=main&style=flat-square&label=tests&labelColor=2d333b"></a>
+<a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue?style=flat-square&labelColor=2d333b"></a>
+</p>
 
-| Command | What it does |
+<p>
+<a href="#using-it">Using it</a> •
+<a href="#what-is-shared">What is shared</a> •
+<a href="#install">Install</a> •
+<a href="#how-it-works">How it works</a>
+</p>
+
+</div>
+
+A work seat and a personal subscription are two logins, and Claude Code holds
+one login per config directory. `CLAUDE_CONFIG_DIR` gives you a second one -
+along with a second copy of everything else: your CLAUDE.md, skills, plugins,
+settings, and every past session. Then the two copies drift apart, and `/resume`
+in one account can't see what you did in the other.
+
+This keeps the logins apart and **everything else as one**. There is nothing to
+sync, so nothing ever asks you what to do: you pick an account when you start
+Claude Code, or you don't and get the one you used last.
+
+## Using it
+
+```fish
+claude                  # the profile you used last
+claude personal         # that one - and it's now the one you used last
+claude personal -r      # anything after the profile goes to Claude Code as it is
+```
+
+```fish
+claude-profiles add personal     # a profile for another account; then `claude personal` and /login
+claude-profiles                  # every profile, its account, and what's running
+```
+
+```
+● work       you@company.com     ~/.claude            2 running
+  personal   you@example.com     ~/.claude-personal
+```
+
+The `●` is the one plain `claude` opens. `claude-profiles rename` and
+`claude-profiles remove` do what they say. Removing one only ever loses its
+login, because nothing else in it was its own. Profile names tab-complete after
+`claude`.
+
+## What is shared
+
+| One copy, in `~/.claude` | Each account's own |
 |---|---|
-| `claude-work` | Launches with the **default** profile (`~/.claude` + `~/.claude.json`) — stock behavior, untouched |
-| `claude-personal` | Launches with a second, independent profile (`~/.claude-personal`) via `CLAUDE_CONFIG_DIR` |
-| `claude` | Sticky: reuses whichever profile you launched last (falls back to work) |
-| `claude-profiles-diff` | Shows how the two profiles differ |
-| `claude-profiles-sync work-to-personal \| personal-to-work` | Copies the shared settings + plugin registry one way (backs up whatever it overwrites) |
+| `CLAUDE.md`, rules, skills, agents, commands, output styles, keybindings | The login |
+| Plugins and marketplaces | `model`, `effortLevel`, `advisorModel` - what the plan can run |
+| Settings: hooks, permissions, enabled plugins, env, status line, everything else | Anything that pins the login (`forceLoginMethod`, `forceLoginOrgUUID`, `apiKeyHelper`, an API key in `env`) |
+| Every session, so `/resume` and `/rewind` see them all | Claude Code's state file, caches, the live session list |
+| Prompt history, todos, plans | Org-managed settings |
 
-All flags pass through, so `claude-personal -r`, `claude -c`, and friends work
-as usual.
+Most of the left column is one directory with a symlink to it from each profile.
+`settings.json` can't be, because the right column lives inside it, so each profile
+keeps its own and they are **merged before every launch**: a setting changed in one
+profile is changed in all of them, and the per-account ones are left alone.
+
+A few things you'd otherwise have to ask:
+
+- **What happens at launch?** Nothing you'll notice. It takes about 10 ms, asks
+  nothing, and prints a line only if it actually changed something.
+- **A session is open in the other account. Is that a problem?** No. A merged
+  settings change reaches it exactly as your own edit to `settings.json` would,
+  and every write is atomic. The one thing
+  that waits for a profile to be idle is merging in a copy of its history left
+  over from before it was shared, and that happens once.
+- **Do I need to restart anything?** No.
+- **Does anything move?** Only the first time a profile is shared: whatever it
+  had of its own joins the shared copy. Where two versions of the same file
+  differ, the newer one is kept and the other is saved in `~/.claude/backups/`.
+- **How many accounts can I have?** As many as you like. A profile is just a
+  `~/.claude-<name>` directory Claude Code has started in.
 
 ## Install
 
-Requires fish 3.2+, `jq`, `rsync`, and the `claude` binary on `$PATH`.
+Requires **fish 3.5+**, `jq` and `rsync`.
 
 ```fish
-git clone <this-repo> && cd Claude-Acc-Manager
-./install.fish     # symlinks claude-profiles.fish into ~/.config/fish/conf.d/
-exec fish
+fisher install Pedroou/claude-profiles
 ```
 
-Then log in once per account:
+Or without [fisher](https://github.com/jorgebucaran/fisher):
 
-1. **Default profile** — run `claude`, then `/login` with account #1.
-2. **Second profile** — run `claude-personal`, then `/login` with account #2.
-   Don't let `/login` auto-open the browser; copy the URL and paste it into the
-   Chrome profile signed in to the right claude.ai account.
-3. **Recommended** — run `./seed-personal.fish` so the new profile inherits your
-   settings, plugins and onboarding state instead of starting at first-run
-   defaults. It keeps the new account's own identity, and `model` stays
-   per-profile, so pick that one yourself with `/model`. Safe to re-run: it
-   never overwrites a choice the second profile made for itself.
-
-Keep both claude.ai accounts logged in permanently by using two Chrome **user
-profiles** (avatar menu → Add profile). Separate cookie jars means no
-logout/re-login fight.
-
-## How it works
-
-Every piece of config falls into one of three buckets:
-
-**Per-profile — never compared, never synced.** `model`, `effortLevel`,
-`advisorModel` and `tui`. Different models per account is the whole point, so
-these are excluded from every comparison. In practice this is what makes the
-tool quiet: it's the key that differs most often.
-
-**Shared — one physical file, no syncing at all.** The permission allowlist
-(`settings.local.json`) and your session history (`projects/`, `file-history/`,
-`history.jsonl`) live in the work profile; the personal profile holds symlinks.
-So `/resume` lists the same sessions from either account, and an "always allow
-X" grant on one side is immediately visible to the other.
-
-The links are self-healing: the first launch after install merges any existing
-personal-side data in (union, newer file wins, anything overwritten is backed
-up) and creates the link. If something ever replaces a symlink with a real file,
-the next launch merges the stray back and restores it.
-
-**On demand — synced only when you confirm.** The rest of `settings.json`
-(hooks, permissions, enabled plugins) and the plugin **registry**. If these
-drift, a launch prints a warning and offers to reconcile:
-
-```
-⚠  Shared config drifted: settings.json, plugins
-   Sync work→personal now? [Y/n]
+```fish
+git clone https://github.com/Pedroou/claude-profiles
+cd claude-profiles
+./install.fish        # links into ~/.config/fish, so `git pull` is an update
 ```
 
-The direction comes from whichever profile you ran *last* — that's where you
-most likely made the change. It's always shown, so a wrong guess is visible
-before you confirm, and every overwritten file is backed up under the
-destination's `backups/`. Press `n` to skip; `claude-profiles-sync` runs it by
-hand later. Non-interactive shells print the warning but never block.
+Your existing `~/.claude` is the first profile, named `default` until you
+`claude-profiles rename default <name>`. Then add one per other account:
 
-The plugin **cache** is never copied — it's gigabytes of re-fetchable git
-checkouts, and it holds per-instance state that breaks when clobbered. Only the
-registry moves; the destination re-fetches what it's missing.
+```fish
+claude-profiles add personal
+claude personal       # then /login, with that account
+```
+
+Keep both claude.ai accounts signed in by giving each its own browser profile,
+and paste the `/login` link into the right one.
 
 <details>
-<summary><b>Gotchas learned the hard way</b></summary>
+<summary><b>Upgrading from the two-profile version</b></summary>
 
-- **Never set `CLAUDE_CONFIG_DIR=~/.claude`** to mean "the default". Once the
-  variable is set, Claude Code expects its state file at
-  `$CLAUDE_CONFIG_DIR/.claude.json`, but the default profile keeps it at
-  `~/.claude.json` (home root) — so it re-runs first-time onboarding. The work
-  launcher therefore runs with the variable explicitly **unset**.
-- The plugin registry stores absolute paths, so copying it between profiles
-  requires rewriting them. The sync does this.
-- Anything that launches the `claude` binary directly (IDE extensions, scripts)
-  bypasses these fish functions and uses the default profile.
-- `.claude.json` and the state caches are deliberately never compared — they
-  change on every run and would warn constantly.
-- Don't cache the profile paths in globals at load time. `conf.d` is sourced
-  once with the real `$HOME`, so a cached path silently ignores any later
-  `$HOME` — which makes the sync untestable and points it at the wrong
-  directories. The functions derive `$HOME/.claude` on every call for exactly
-  this reason, and tests must run under `fish --no-config`.
+`git pull && ./install.fish`, on each machine. It keeps the names you had
+(`work` for `~/.claude`, `personal` for `~/.claude-personal`) and which one you
+used last. `claude-work` and `claude-personal` become `claude work` and `claude
+personal`, and `claude-profiles-diff`/`-sync` are gone, along with the prompt that
+asked you which way to sync, because there is nothing left to sync. The first
+launch afterwards shares what the old version didn't (CLAUDE.md, skills, plugins
+and so on) and says what it merged.
 
 </details>
 
-## Panel widget
+## How it works
 
-The Plasma 6 widget that shows what every running Claude Code session is doing —
-across both profiles — now lives in its own repository:
+Everything with a decision in it is two functions.
 
-**[Pedroou/claude-sessions-widget](https://github.com/Pedroou/claude-sessions-widget)**
+**Sharing** (`__claude_profiles_share`) runs for each profile before a launch.
+An entry that's already a symlink is left alone. A missing one is linked. A real
+copy where the link belongs is moved into `~/.claude` if the shared side has
+none, or merged into it if it has. Directories are merged with two `rsync`
+passes that between them back up every losing version and only those, prompt
+history as the union of both, and plugins by registry, since the rest is a cache
+Claude Code fetches again.
 
-It reads the registry Claude Code already keeps at
-`<profile>/sessions/<pid>.json`, so it works with the two profiles this project
-sets up without either side knowing about the other. Nothing here depends on it,
-and it depends on nothing here.
+**Settings** (`__claude_profiles_merge`) is a three-way merge, the way git
+merges branches. The common ancestor is the shared settings as of the last
+merge, so any setting that differs from it has been changed. That settles the
+direction without anyone saying where a change was made, and changes to
+different settings made in different profiles both land. When two profiles
+change the same setting, a list of strings (permission rules, usually) is merged
+as a set, and anything else goes to the newer file, with the other backed up.
+It's per setting, at any depth, so a hook added in one profile and another hook
+edited in the other are two separate changes.
 
-## Notes
+When no `settings.json` has changed since the last merge, which is nearly
+always, the whole thing costs a `stat` per profile.
 
-"Work" just means *whichever account lives in the default `~/.claude`
-directory* — on a home machine that may well be your personal account, with the
-work account in the secondary profile. The names are labels; pick your own
-mapping and stay consistent.
-
-## Design docs
-
-`docs/superpowers/specs/` holds the design write-ups — the profile-sync
-redesign explains why launch-time auto-copying was removed in favour of the
-three buckets above. The usage-plasmoid document is a **design only**; that
-widget was never built, though the endpoint it documented is now what feeds the
-usage bars in [claude-sessions-widget](https://github.com/Pedroou/claude-sessions-widget).
-
-## Tests
+[`docs/design.md`](docs/design.md) has the full reasoning, including what the
+previous version did and why it's gone.
 
 ```fish
-fish --no-config tests/test-profiles.fish
-fish --no-config tests/test-sessions.fish
-fish --no-config tests/test-seed.fish
+fish --no-config test/run.fish        # 156 assertions, four suites
 ```
 
-Each suite builds a throwaway `$HOME`, runs the real code against it, and
-asserts your actual `~/.claude` was untouched.
+Every suite runs the real functions against a throwaway `$HOME`, a stand-in
+`claude` and a fake `/proc`, then checks that your real profiles weren't
+touched.
+
+## Limitations
+
+- **Anything that runs `claude` without going through fish** (an IDE
+  extension, a script) gets the default profile, because the profile is chosen
+  by the `claude` function.
+- **User-scope MCP servers** (`claude mcp add -s user`) are stored in Claude
+  Code's state file, which also holds the login, so they stay per account. A new
+  profile starts with a copy of the default's.
+- **Linux.** Whether a session is running comes from `/proc`. Elsewhere, the
+  one-time merges don't wait for a profile to be idle.
+- A prompt that is exactly a profile's name (`claude personal`) opens the
+  profile. Any other wording reaches Claude Code.
+
+## Works with
+
+**[Agent Session Manager](https://github.com/Pedroou/claude-sessions-widget)**,
+a Plasma panel widget that shows which of your Claude Code sessions needs you,
+across every profile. Its account search finds the profiles this makes, and
+neither one depends on the other.
+
+## Licence
+
+MIT - see [LICENSE](LICENSE).
+
+<sub>Unofficial, and not affiliated with or endorsed by Anthropic. Claude and
+Claude Code are trademarks of Anthropic, PBC.</sub>
