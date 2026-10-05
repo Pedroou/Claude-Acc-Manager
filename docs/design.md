@@ -96,7 +96,8 @@ If both sides have one, the profile's copy has to go somewhere. That pulls
 files out from under a session that has them open, so it waits until nothing
 is running in that profile, and says so in the meantime. Then:
 
-- **Session directories** (`projects/`, `file-history/`, `todos/`, `plans/`)
+- **Session directories** (`projects/`, `file-history/`, `todos/`, `plans/`,
+  and `paste-cache/` and `image-cache/`, which history points into by hash)
   are merged, because a conversation dropping out of `/resume` is exactly what
   this tool exists to prevent. It takes two `rsync --update --backup` passes
   into one backup directory. The first brings over every file that's newer in
@@ -106,7 +107,7 @@ is running in that profile, and says so in the meantime. Then:
   backup, and nothing else is.
 - **Everything else** is set aside in `~/.claude/backups/` and linked, and a
   line says so. That covers a second CLAUDE.md, other skills, the prompt
-  history and the plugin cache. An earlier version merged each of these its
+  history file and the plugin cache. An earlier version merged each of these its
   own way (the history line by line, plugins by registry entry), which was
   around a hundred lines of code for something that happens once per machine.
   Two CLAUDE.mds can't be merged by a rule anyway, and a plugin cache is

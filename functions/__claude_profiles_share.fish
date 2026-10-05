@@ -65,8 +65,9 @@ function __claude_profiles_share -a dir
         end
 
         set -q backup[1]; or set backup $hub/backups/profiles-(date +%Y%m%d-%H%M%S)-$name
-        if contains -- $entry projects file-history todos plans; and test -d $here -a -d $there
-            # Sessions: everything this profile had joins the shared copy. A
+        if contains -- $entry projects file-history paste-cache image-cache todos plans; and test -d $here -a -d $there
+            # Sessions, and the pastes and images history points into by hash:
+            # everything this profile had joins the shared copy. A
             # file both sides have keeps the newer version, and the other is in
             # the backup - the second pass, run the other way, is what saves
             # this side's version wherever the shared one was newer.

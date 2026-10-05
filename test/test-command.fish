@@ -108,6 +108,13 @@ claude-profiles rename personal home >/dev/null
 check "the directory moves" dir (kind $HOME/.claude-home)
 check "the old one is gone" none (kind $HOME/.claude-personal)
 check "and claude still opens it" home (__claude_profiles_state last)
+set -l hub $HOME/.claude/plugins
+mkdir -p $hub
+jq -n --arg p $HOME/.claude-home/plugins '{plugins: {"a@mp": [{installPath: "\($p)/cache/a"}]}}' >$hub/installed_plugins.json
+claude-profiles rename home other >/dev/null
+check "plugin paths recorded through the old name are pointed at the shared copy" "$hub/cache/a" \
+    (jq -r '.plugins["a@mp"][0].installPath' $hub/installed_plugins.json)
+claude-profiles rename other home >/dev/null
 claude-profiles rename default work >/dev/null
 check "the default can be renamed" $HOME/.claude (__claude_profiles_find work)
 check "which is only a name: ~/.claude stays put" dir (kind $HOME/.claude)

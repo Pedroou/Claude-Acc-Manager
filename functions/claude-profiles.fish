@@ -165,6 +165,9 @@ function __claude_profiles_rename -a old new
             echo "claude-profiles: $old has $running session(s) running. Close them first." >&2
             return 1
         end
+        # Sharing first points any plugin path recorded through the old name
+        # back at the shared copy; after the move, nothing would find it.
+        __claude_profiles_share $dir
         mv $dir $HOME/.claude-$new; or return
     end
     test "$old" = (__claude_profiles_state last; or echo); and __claude_profiles_state last $new

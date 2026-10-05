@@ -157,7 +157,7 @@ always, the whole thing costs a `stat` per profile.
 previous version did and why it's gone.
 
 ```fish
-fish --no-config test/run.fish        # 159 assertions, four suites
+fish --no-config test/run.fish        # 160 assertions, four suites
 ```
 
 Every suite runs the real functions against a throwaway `$HOME`, a stand-in
