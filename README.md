@@ -5,7 +5,7 @@
 <p><b>Several Claude Code accounts, one Claude Code.</b></p>
 
 <p>
-<img alt="fish 3.5+" src="https://img.shields.io/badge/fish-3.5%2B-4aae47?style=flat-square&labelColor=2d333b">
+<img alt="fish 3.7+" src="https://img.shields.io/badge/fish-3.7%2B-4aae47?style=flat-square&labelColor=2d333b">
 <a href="https://github.com/Pedroou/claude-profiles/actions/workflows/tests.yml"><img alt="tests" src="https://img.shields.io/github/actions/workflow/status/Pedroou/claude-profiles/tests.yml?branch=main&style=flat-square&label=tests&labelColor=2d333b"></a>
 <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue?style=flat-square&labelColor=2d333b"></a>
 </p>
@@ -58,18 +58,23 @@ aside in `~/.claude/backups/`. Profile names tab-complete after `claude`.
 |---|---|
 | `CLAUDE.md`, rules, skills, agents, commands, output styles, keybindings | The login |
 | Plugins and marketplaces | `model`, `effortLevel`, `advisorModel` - what the plan can run |
-| Settings: hooks, permissions, enabled plugins, env, status line, everything else | Anything that pins the login (`forceLoginMethod`, `forceLoginOrgUUID`, `apiKeyHelper`, an API key in `env`) |
+| Settings: hooks, permissions, enabled plugins, env, status line, everything else | How it logs in and which provider it talks to: `apiKeyHelper`, `forceLogin*`, API keys, base URLs, Bedrock and Vertex settings in `env` |
 | Every session, so `/resume` and `/rewind` see them all | Claude Code's state file, caches, the live session list |
 | Prompt history, todos, plans | Org-managed settings |
 
 Most of the left column is one directory with a symlink to it from each profile.
 `settings.json` can't be, because the right column lives inside it, so each profile
 keeps its own and they are **merged before every launch**: a setting changed in one
-profile is changed in all of them, and the per-account ones are left alone.
+profile is changed in all of them, and the per-account ones are left alone. To
+keep another setting per account, name it: `set -U claude_profiles_own env.MY_VAR`.
+
+Sharing is the point, so it has no off switch: every account sees every
+session. If your work transcripts mustn't be readable from your personal
+account, keep that account on another machine user instead.
 
 A few things you'd otherwise have to ask:
 
-- **What happens at launch?** Nothing you'll notice. It takes about 10 ms, asks
+- **What happens at launch?** Nothing you'll notice. It takes under 20 ms, asks
   nothing, and prints a line only if it actually changed something.
 - **A session is open in the other account. Is that a problem?** No. A merged
   settings change reaches it exactly as your own edit to `settings.json` would,
@@ -77,15 +82,16 @@ A few things you'd otherwise have to ask:
   is merging in a copy of its history left over from before it was shared, and
   that happens once.
 - **Do I need to restart anything?** No.
-- **Does anything move?** Only the first time a profile is shared: whatever it
-  had of its own joins the shared copy. Where two versions of the same file
-  differ, the newer one is kept and the other is saved in `~/.claude/backups/`.
+- **Does anything move?** Only the first time a profile is shared. Its own
+  sessions join the shared ones, so none drop out of `/resume`. Anything else
+  it had a copy of, while the shared side had one too, is set aside in
+  `~/.claude/backups/` and the line printed says so.
 - **How many accounts can I have?** As many as you like. A profile is just a
   `~/.claude-<name>` directory Claude Code has started in.
 
 ## Install
 
-Requires **fish 3.5+**, `jq` and `rsync`.
+Requires **fish 3.7+**, `jq`, `rsync` and Linux with GNU coreutils.
 
 ```fish
 fisher install Pedroou/claude-profiles
@@ -130,20 +136,19 @@ Everything with a decision in it is two functions.
 **Sharing** (`__claude_profiles_share`) runs for each profile before a launch.
 An entry that's already a symlink is left alone. A missing one is linked. A real
 copy where the link belongs is moved into `~/.claude` if the shared side has
-none, or merged into it if it has. Directories are merged with two `rsync`
-passes that between them back up every losing version and only those, prompt
-history as the union of both, and plugins by registry, since the rest is a cache
-Claude Code fetches again.
+none. If it has one, session directories are merged, with two `rsync` passes
+that between them back up every losing version and only those. Anything else
+is set aside in `~/.claude/backups/` rather than guessed about.
 
 **Settings** (`__claude_profiles_merge`) is a three-way merge, the way git
 merges branches. The common ancestor is the shared settings as of the last
 merge, so any setting that differs from it has been changed. That settles the
 direction without anyone saying where a change was made, and changes to
 different settings made in different profiles both land. When two profiles
-change the same setting, a list of strings (permission rules, usually) is merged
-as a set, and anything else goes to the newer file, with the other backed up.
-It's per setting, at any depth, so a hook added in one profile and another hook
-edited in the other are two separate changes.
+change the same setting, a list is merged as a set, and anything else goes to
+the newer file, with the other backed up. So a permission granted in one
+profile and another revoked in the other both happen, and so do a hook added
+in one and a hook edited in the other.
 
 When no `settings.json` has changed since the last merge, which is nearly
 always, the whole thing costs a `stat` per profile.
@@ -152,7 +157,7 @@ always, the whole thing costs a `stat` per profile.
 previous version did and why it's gone.
 
 ```fish
-fish --no-config test/run.fish        # 156 assertions, four suites
+fish --no-config test/run.fish        # 159 assertions, four suites
 ```
 
 Every suite runs the real functions against a throwaway `$HOME`, a stand-in
@@ -167,8 +172,8 @@ touched.
 - **User-scope MCP servers** (`claude mcp add -s user`) are stored in Claude
   Code's state file, which also holds the login, so they stay per account. A new
   profile starts with a copy of the default's.
-- **Linux.** Whether a session is running comes from `/proc`. Elsewhere, the
-  one-time merges don't wait for a profile to be idle.
+- **Linux with GNU coreutils.** Whether a session is running comes from
+  `/proc`, and the file handling uses GNU options (`mv -T`, `stat -c`).
 - A prompt that is exactly a profile's name (`claude personal`) opens the
   profile. Any other wording reaches Claude Code.
 

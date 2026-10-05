@@ -15,7 +15,7 @@ function __claude_profiles_running -a dir
 
     set -l count 0
     for record in $dir/sessions/*.json
-        set -l pid (path basename -E -- $record)
+        set -l pid (string replace -ar '^.*/|\.json$' '' -- $record)
         string match -qr '^[0-9]+$' -- $pid; or continue
         test -r $proc/$pid/stat; or continue
 

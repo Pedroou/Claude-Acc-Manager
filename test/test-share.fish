@@ -40,7 +40,7 @@ mkdir -p $P/commands
 share 2>/dev/null
 check "a move is safe mid-session" link:$HOME/.claude/commands (kind $P/commands)
 
-section "Two copies of a directory are merged, and every losing version is kept"
+section "Two copies of a session directory are merged, and every losing version is kept"
 set P $HOME/.claude-personal
 profile personal
 mkdir -p $HOME/.claude/projects/-p $P/projects/-p
@@ -92,29 +92,22 @@ running $P 304
 rm -r $CLAUDE_PROFILES_PROC/304
 check "nor is a pid that's gone" 0 (__claude_profiles_running $P)
 
-section "Prompt history is merged line by line, in time order"
+section "Anything else both sides have is set aside, not guessed at"
 set P $HOME/.claude-personal
 profile personal
-printf '%s\n' '{"display":"one","timestamp":1}' '{"display":"three","timestamp":3}' >$HOME/.claude/history.jsonl
-printf '%s\n' '{"display":"two","timestamp":2}' '{"display":"three","timestamp":3}' >$P/history.jsonl
-share 2>/dev/null
-check "both halves, once each, in order" "one two three" (jq -r .display $HOME/.claude/history.jsonl | string join ' ')
-check "linked" link:$HOME/.claude/history.jsonl (kind $P/history.jsonl)
-
-section "Two copies of a file: the newer is kept, the other backed up"
-set P $HOME/.claude-personal
-profile personal
-echo "old rules" >$HOME/.claude/CLAUDE.md
-touch -d '1 day ago' $HOME/.claude/CLAUDE.md
-echo "new rules" >$P/CLAUDE.md
-share 2>/dev/null
-check "the newer one is shared" "new rules" (cat $HOME/.claude/CLAUDE.md)
-check "the older is backed up" "old rules" (cat $HOME/.claude/backups/profiles-*-personal/CLAUDE.md)
-profile other
-echo same >$HOME/.claude/keybindings.json
-echo same >$HOME/.claude-other/keybindings.json
-__claude_profiles_share $HOME/.claude-other 2>/dev/null
-check "identical copies need no backup" 0 (count $HOME/.claude/backups/profiles-*-other)
+echo "shared rules" >$HOME/.claude/CLAUDE.md
+echo "personal rules" >$P/CLAUDE.md
+printf '%s\n' '{"display":"one"}' >$HOME/.claude/history.jsonl
+printf '%s\n' '{"display":"two"}' >$P/history.jsonl
+mkdir -p $HOME/.claude/skills/a $P/skills/b
+set -l said (share 2>&1)
+check "the shared CLAUDE.md stands" "shared rules" (cat $HOME/.claude/CLAUDE.md)
+check "personal's is in the backup" "personal rules" (cat $HOME/.claude/backups/profiles-*-personal/CLAUDE.md)
+check "so is its history" '{"display":"two"}' (cat $HOME/.claude/backups/profiles-*-personal/history.jsonl)
+check "and its skills" dir (kind $HOME/.claude/backups/profiles-*-personal/skills/b)
+check "all three are linked now" "link:$HOME/.claude/CLAUDE.md link:$HOME/.claude/history.jsonl link:$HOME/.claude/skills" \
+    (string join ' ' (kind $P/CLAUDE.md) (kind $P/history.jsonl) (kind $P/skills))
+check "it says what it set aside, and where" 2 (count (string match -r 'had its own|backups/profiles-' -- $said))
 
 section "A link you made yourself is left alone"
 set P $HOME/.claude-personal
@@ -124,38 +117,31 @@ ln -s $ROOT/elsewhere $P/skills
 share 2>/dev/null
 check "still points where you pointed it" link:$ROOT/elsewhere (kind $P/skills)
 
-section "Plugins: what can't be fetched again is kept, the cache is not"
+section "A profile's own plugins are set aside, and the shared ones used"
+set P $HOME/.claude-personal
+profile personal
+mkdir -p $HOME/.claude/plugins/cache/mp/a/2.0 $P/plugins/cache/mp/a/1.0
+share 2>/dev/null
+check "plugins are shared" link:$HOME/.claude/plugins (kind $P/plugins)
+check "the profile's own copy is in the backup" dir (kind $HOME/.claude/backups/profiles-*-personal/plugins/cache/mp/a/1.0)
+
+section "Plugin paths recorded through a profile are pointed at the shared copy"
 set P $HOME/.claude-personal
 profile personal
 set -l hub $HOME/.claude/plugins
-mkdir -p $hub/cache/mp/both/2.0 $hub/marketplaces/mp $hub/data/both
-mkdir -p $P/plugins/cache/mp/both/1.0 $P/plugins/cache/mp/mine/1.0 $P/plugins/marketplaces/mp $P/plugins/marketplaces/extra
-mkdir -p $P/plugins/data/both $P/plugins/data/mine
-echo mine >$P/plugins/cache/mp/mine/1.0/plugin.json
-echo shared-data >$hub/data/both/state
-echo personal-data >$P/plugins/data/both/state
-touch -d '1 day ago' $P/plugins/data/both/state
-echo mine-data >$P/plugins/data/mine/state
-jq -n --arg h $hub '{version: 2, plugins: {"both@mp": [{installPath: "\($h)/cache/mp/both/2.0", version: "2.0"}]}}' \
-    >$hub/installed_plugins.json
-jq -n --arg h $P/plugins '{version: 2, plugins: {
-        "both@mp": [{installPath: "\($h)/cache/mp/both/1.0", version: "1.0"}],
-        "mine@mp": [{installPath: "\($h)/cache/mp/mine/1.0", version: "1.0"}]}}' \
-    >$P/plugins/installed_plugins.json
-jq -n --arg h $hub '{mp: {installLocation: "\($h)/marketplaces/mp"}}' >$hub/known_marketplaces.json
-jq -n --arg h $P/plugins '{mp: {installLocation: "\($h)/marketplaces/mp"},
-                           extra: {installLocation: "\($h)/marketplaces/extra"}}' >$P/plugins/known_marketplaces.json
+mkdir -p $hub
+ln -s $hub $P/plugins
+jq -n --arg p $P/plugins --arg h $hub '{version: 2, plugins: {
+        "a@mp": [{installPath: "\($p)/cache/mp/a/1.0"}],
+        "b@mp": [{installPath: "\($h)/cache/mp/b/1.0"}]}}' >$hub/installed_plugins.json
+jq -n --arg p $P/plugins '{mp: {installLocation: "\($p)/marketplaces/mp"}}' >$hub/known_marketplaces.json
 share 2>/dev/null
-set -l reg $hub/installed_plugins.json
-check "a plugin installed on both keeps the shared entry" "$hub/cache/mp/both/2.0" (jq -r '.plugins["both@mp"][0].installPath' $reg)
-check "one only personal had joins the registry, repointed" "$hub/cache/mp/mine/1.0" (jq -r '.plugins["mine@mp"][0].installPath' $reg)
-check "with its files" mine (cat $hub/cache/mp/mine/1.0/plugin.json)
-check "the registry keeps its version" 2 (jq .version $reg)
-check "a marketplace only personal had joins too" "$hub/marketplaces/extra" (jq -r .extra.installLocation $hub/known_marketplaces.json)
-check "personal's stale cached version isn't copied" none (kind $hub/cache/mp/both/1.0)
-check "plugin data is merged: the newer version is kept" shared-data (cat $hub/data/both/state)
-check "and the older one backed up" personal-data (cat $HOME/.claude/backups/profiles-*-personal/plugins/data/both/state)
-check "plugin data only personal had is brought over" mine-data (cat $hub/data/mine/state)
-check "and plugins are shared from now on" link:$hub (kind $P/plugins)
+check "an installed plugin's path" "$hub/cache/mp/a/1.0" (jq -r '.plugins["a@mp"][0].installPath' $hub/installed_plugins.json)
+check "one already right is left as it is" "$hub/cache/mp/b/1.0" (jq -r '.plugins["b@mp"][0].installPath' $hub/installed_plugins.json)
+check "a marketplace's path" "$hub/marketplaces/mp" (jq -r .mp.installLocation $hub/known_marketplaces.json)
+check "the registry keeps its version" 2 (jq .version $hub/installed_plugins.json)
+set -l before (stat -c %Y.%N $hub/installed_plugins.json)
+share 2>/dev/null
+check "and once right, the file isn't rewritten" "$before" (stat -c %Y.%N $hub/installed_plugins.json)
 
 finish

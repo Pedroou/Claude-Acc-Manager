@@ -163,3 +163,24 @@ function __claude_assert_headed --on-event claude_profiles_launch
     echo "   Browser automation stays headed - see ~/.claude/CLAUDE.md."
 end
 ```
+
+## Follow-up after the expert review (2026-10-05)
+
+- **One-time sharing is simpler.** When both sides have a copy, session
+  directories are still merged. Everything else (CLAUDE.md, skills, history,
+  plugins) is set aside in `~/.claude/backups/` instead. This removed about
+  100 lines.
+- **Plugin paths are fixed on every launch.** Plugin updates made from
+  `personal` had recorded six registry paths through `~/.claude-personal/`.
+  Each launch now points them back at `~/.claude/plugins/`. This machine is
+  already fixed; the old registry is in
+  `~/.claude/backups/installed_plugins.before-repoint-20261005.json`.
+- **Hooks and other lists merge as sets.** Two changes to the same hook event
+  both land instead of conflicting.
+- **The per-account list is wider.** It now covers provider and endpoint
+  settings, such as base URLs, Bedrock, Vertex and AWS. Add your own with
+  `set -U claude_profiles_own env.X`.
+- **Requirements are corrected.** It needs fish 3.7+ and GNU coreutils. CI now
+  tests on both fish 3 and fish 4.
+- **Small fixes.** The list no longer breaks on plain terminals, the test
+  tripwire now works in CI, and it handles a symlinked `$HOME`.

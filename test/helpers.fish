@@ -16,9 +16,13 @@ set -g FAIL 0
 # the state directory. Taken before anything moves $HOME: a hardcoded path, or
 # one read afterwards, would leave the check guarding nothing.
 function __real_fingerprint -a home
+    # Collected with `set` first: a glob matching nothing is an error as a
+    # command argument, and would abort the find - leaving nothing guarded.
+    set -l profiles $home/.claude $home/.claude-*
+    set -l settings $home/.claude/settings.json $home/.claude-*/settings.json
     begin
-        find $home/.claude $home/.claude-* -mindepth 1 -maxdepth 1 -printf '%y %p\n' 2>/dev/null | sort
-        cat $home/.claude/settings.json $home/.claude-*/settings.json 2>/dev/null
+        find $profiles -mindepth 1 -maxdepth 1 -printf '%y %p\n' 2>/dev/null | sort
+        cat $settings 2>/dev/null
         find $home/.local/state/claude-profiles -printf '%y %p %s\n' 2>/dev/null | sort
     end | md5sum
 end

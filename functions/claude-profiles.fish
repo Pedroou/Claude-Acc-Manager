@@ -58,13 +58,18 @@ function __claude_profiles_list
             set widths[$c] (math "max($widths[$c], $len)")
         end
     end
+    # Quoted, because on a terminal without colours set_color prints nothing,
+    # and an unquoted nothing would shift every column after it.
+    set -l bold "$(set_color --bold)"
+    set -l dim "$(set_color brblack)"
+    set -l off "$(set_color normal)"
     for i in (seq 1 4 (count $rows))
         set -l mark ' '
-        test (math "($i + 3) / 4") -eq $marked; and set mark (set_color green)●(set_color normal)
+        test (math "($i + 3) / 4") -eq $marked; and set mark "$(set_color green)●$off"
         printf '%s %s%s%s   %s   %s%s%s   %s\n' $mark \
-            (set_color --bold) (string pad -r -w $widths[1] -- $rows[$i]) (set_color normal) \
+            $bold (string pad -r -w $widths[1] -- $rows[$i]) $off \
             (string pad -r -w $widths[2] -- $rows[(math $i + 1)]) \
-            (set_color brblack) (string pad -r -w $widths[3] -- $rows[(math $i + 2)]) (set_color normal) \
+            $dim (string pad -r -w $widths[3] -- $rows[(math $i + 2)]) $off \
             $rows[(math $i + 3)]
     end
 end

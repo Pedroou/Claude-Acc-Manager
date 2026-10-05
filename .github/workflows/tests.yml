@@ -12,23 +12,22 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Both the last fish 3 and the current fish 4: the README's floor is
+    # whatever this proves, not what the changelogs suggest.
+    strategy:
+      fail-fast: false
+      matrix:
+        fish: [release-3, release-4]
+    name: fish ${{ matrix.fish }}
     steps:
       - uses: actions/checkout@v4
 
-      # The distribution's fish can lag behind; the fish PPA tracks releases.
       - name: Install fish, jq and rsync
         run: |
-          sudo apt-add-repository -y ppa:fish-shell/release-4
+          sudo apt-add-repository -y ppa:fish-shell/${{ matrix.fish }}
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends fish jq rsync
-
-      # The functions use the `path` builtin, which arrived in fish 3.5. Fail
-      # here with a reason rather than in a suite with "path: unknown command".
-      - name: Check fish is new enough
-        run: |
           fish -c 'echo "fish $version"'
-          fish -c 'builtin --names | string match -q path' \
-            || { echo "::error::this fish has no \`path\` builtin (needs 3.5+)"; exit 1; }
 
       - name: Tests
         run: fish --no-config test/run.fish

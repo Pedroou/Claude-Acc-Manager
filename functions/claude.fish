@@ -40,7 +40,7 @@ function claude --description 'Claude Code, in the profile you name or the one y
     # directory, but the default one lives beside it at ~/.claude.json, so it
     # would think this is a first run. `env` also skips this function and runs
     # the real claude from $PATH.
-    if test "$dir" = $HOME/.claude
+    if test (path resolve -- $dir) = (path resolve -- $HOME/.claude)
         env -u CLAUDE_CONFIG_DIR claude $argv
     else
         env CLAUDE_CONFIG_DIR=$dir claude $argv

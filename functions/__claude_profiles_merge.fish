@@ -14,9 +14,10 @@
 # made in different profiles, simply both happen.
 #
 # The only thing left to decide is two profiles changing the *same* setting to
-# different values. A list of strings - permission rules, most often - is
-# merged as a set, so both sides' additions and removals survive. Anything else
-# goes to the newer file, and the other profile's copy is backed up first.
+# different values. A list - permission rules, the hooks for one event - is
+# merged as a set, so both sides' additions and removals survive, and an edited
+# entry is one removal and one addition. Anything else goes to the newer file,
+# and the other profile's copy is backed up first.
 #
 # The comparison is per setting, at any depth: an object is a folder of
 # settings, while a value that is not an object (arrays included) is one
@@ -28,11 +29,21 @@
 # everyone until it's fixed, rather than being taken as "every setting deleted".
 function __claude_profiles_merge
     # What belongs to the account rather than to you: the models your plan can
-    # run, anything that pins the login, and credentials put in `env`.
-    set -l own '[["model"], ["effortLevel"], ["advisorModel"],
-                 ["forceLoginMethod"], ["forceLoginOrgUUID"], ["apiKeyHelper"],
-                 ["env", "ANTHROPIC_API_KEY"], ["env", "ANTHROPIC_AUTH_TOKEN"],
-                 ["env", "CLAUDE_CODE_OAUTH_TOKEN"]]'
+    # run, and everything that says how this account logs in or which provider
+    # it talks to. More can be added, as dotted paths:
+    #   set -U claude_profiles_own env.MY_GATEWAY_TOKEN
+    set -l own model effortLevel advisorModel \
+        forceLoginMethod forceLoginOrgUUID forceLoginGatewayUrl apiKeyHelper \
+        awsAuthRefresh awsCredentialExport \
+        env.ANTHROPIC_API_KEY env.ANTHROPIC_AUTH_TOKEN env.CLAUDE_CODE_OAUTH_TOKEN \
+        env.ANTHROPIC_BASE_URL env.ANTHROPIC_MODEL env.ANTHROPIC_SMALL_FAST_MODEL \
+        env.ANTHROPIC_DEFAULT_OPUS_MODEL env.ANTHROPIC_DEFAULT_SONNET_MODEL \
+        env.ANTHROPIC_DEFAULT_HAIKU_MODEL \
+        env.CLAUDE_CODE_USE_BEDROCK env.CLAUDE_CODE_USE_VERTEX \
+        env.AWS_PROFILE env.AWS_REGION env.CLOUD_ML_REGION env.ANTHROPIC_VERTEX_PROJECT_ID \
+        $claude_profiles_own
+    # As jq paths, [["model"], ["env", "AWS_PROFILE"], …], built without a fork.
+    set own '['(string join , -- '["'(string replace -a . '","' -- $own)'"]')']'
 
     set -l base (__claude_profiles_state)/settings.json
     set -l names
@@ -64,7 +75,6 @@ function __claude_profiles_merge
             | [paths(type != "object") as $p | {key: ($p | tojson), value: getpath($p)}]
             | map(select(.key | fromjson | all(type == "string")))  # not inside an array
             | from_entries;
-        def strings_only: type == "array" and all(.[]; type == "string");
 
         $ARGS.positional as $a
         | ($a[0] | fromjson? // {} | settings) as $base
@@ -91,7 +101,7 @@ function __claude_profiles_merge
                     .merged += (if $was == [] then {} else {($k): $was[0]} end)
                   elif ($versions | length) == 1 then
                     .merged += (if $versions[0] == [] then {} else {($k): $versions[0][0]} end)
-                  elif ($was | all(.[]; strings_only)) and all($versions[]; length == 1 and (.[0] | strings_only)) then
+                  elif ($was | all(.[]; type == "array")) and all($versions[]; length == 1 and (.[0] | type == "array")) then
                     ($was[0] // []) as $old
                     | ([$versions[][0][] | select(. as $x | $old | index([$x]) | not)] | unique) as $added
                     | ([$old[] | select(. as $x | all($versions[][0]; index([$x]) != null) | not)]) as $removed

@@ -9,12 +9,10 @@ set -l here (dirname (realpath (status filename)))
 set -l fish_config $HOME/.config/fish
 set -q __fish_config_dir[1]; and set fish_config $__fish_config_dir
 
-# Tested for directly rather than by parsing a version string: the `path`
-# builtin (fish 3.5) is the thing that would break, and an old fish would
-# otherwise fail later with a bare "path: unknown command" on every launch.
-if not builtin --names | string match -q path
-    echo "✗ This fish is too old: claude-profiles needs the `path` builtin (fish 3.5+)."
-    echo "  Yours is $version."
+# 3.7 is the oldest fish the test suite runs on (see .github/workflows).
+set -l v (string split . -- (string match -r '^[0-9]+\.[0-9]+' -- $version))
+if test "$v[1]" -lt 3; or test "$v[1]" -eq 3 -a "$v[2]" -lt 7
+    echo "✗ claude-profiles needs fish 3.7 or newer; this is $version."
     exit 1
 end
 for tool in jq rsync

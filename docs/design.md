@@ -90,26 +90,34 @@ somewhere yourself.
 A profile from before it was shared, or one where something replaced a link
 with a real file, has its own copy where the link belongs. If the shared side
 has none, it's moved over. A move within a filesystem leaves open files open,
-so that's safe even with a session running. If both sides have one, they're
-merged. That swaps out files a running session may be holding open, so it
-waits until nothing is running in that profile and says so in the meantime.
+so that's safe even with a session running.
 
-How they're merged depends on what they are:
+If both sides have one, the profile's copy has to go somewhere. That pulls
+files out from under a session that has them open, so it waits until nothing
+is running in that profile, and says so in the meantime. Then:
 
-- **Directories**: two `rsync --update --backup` passes into one backup
-  directory. The first brings over every file that's newer in the profile,
-  saving the shared version it replaces. The second runs the other way over
-  files both sides have, which saves the profile's version wherever the shared
-  one was newer. Between them, every version that lost is in the backup, and
-  nothing else is.
-- **`history.jsonl`**: it's a log, so both halves are kept. The result is the
-  union of the lines, back in time order.
-- **Other files**: the newer one is kept and the other backed up, unless
-  they're identical.
-- **`plugins/`**: mostly a cache Claude Code fetches again, so it isn't merged
-  file by file. What's kept is what can't be fetched again without you: the
-  registry entries the shared side lacks, with their files moved over and their
-  absolute paths rewritten, and plugin data the shared side has no copy of.
+- **Session directories** (`projects/`, `file-history/`, `todos/`, `plans/`)
+  are merged, because a conversation dropping out of `/resume` is exactly what
+  this tool exists to prevent. It takes two `rsync --update --backup` passes
+  into one backup directory. The first brings over every file that's newer in
+  the profile, saving the shared version it replaces. The second runs the other
+  way over files both sides have, which saves the profile's version wherever
+  the shared one was newer. Between them, every version that lost is in the
+  backup, and nothing else is.
+- **Everything else** is set aside in `~/.claude/backups/` and linked, and a
+  line says so. That covers a second CLAUDE.md, other skills, the prompt
+  history and the plugin cache. An earlier version merged each of these its
+  own way (the history line by line, plugins by registry entry), which was
+  around a hundred lines of code for something that happens once per machine.
+  Two CLAUDE.mds can't be merged by a rule anyway, and a plugin cache is
+  fetched again on demand.
+
+One thing does need watching on every launch. Plugin registries store
+absolute paths, and Claude Code records a plugin installed or updated from a
+profile through that profile's link (`~/.claude-work/plugins/cache/…`). That
+path works until the profile is renamed or removed. So each launch points such
+paths back at `~/.claude/plugins/`. Checking costs a string match, and `jq`
+only runs when there's something to fix.
 
 "Nothing running" is checked the way Claude Code checks its own session
 records: the record's process must exist, and field 22 of `/proc/<pid>/stat`
@@ -120,11 +128,17 @@ left behind by a killed session whose pid has since been reused.
 
 `settings.json` is the one thing that can't be a single file. Most of it is
 yours (hooks, permissions, enabled plugins, env), but a few keys are the
-account's: `model`, `effortLevel` and `advisorModel` depend on what the plan
-can run, and `forceLoginMethod`, `forceLoginOrgUUID`, `apiKeyHelper` and a
-credential in `env` (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
-`CLAUDE_CODE_OAUTH_TOKEN`) pin the login. So each profile keeps its own file, and the files are merged before
-every launch.
+account's:
+
+- `model`, `effortLevel` and `advisorModel` depend on what the plan can run.
+- The login and the provider: `apiKeyHelper`, `forceLogin*`, `awsAuthRefresh`,
+  and in `env` the API keys and tokens, base URLs, model overrides, and the
+  Bedrock and Vertex switches and regions.
+
+So each profile keeps its own file, and the files are merged before every
+launch. The per-account list is the one place where sharing by default is the
+riskier choice, so it's broad. It can be extended with dotted paths in a fish
+variable (`set -U claude_profiles_own env.MY_VAR`), which needs no config file.
 
 Merging two files needs a direction, and guessing the direction is what sank
 the previous version. A three-way merge doesn't need one. The state directory
@@ -142,7 +156,7 @@ cases:
 |---|---|
 | nobody changed it | kept |
 | one profile changed it, or several changed it the same way | the change, everywhere |
-| profiles changed it differently, and every version is a list of strings | merged as a set: every addition and every removal survives |
+| profiles changed it differently, and every version is a list | merged as a set: every addition and every removal survives |
 | profiles changed it differently, otherwise | the newer file's version; the other profile's file is backed up first, and a line says which won |
 
 A deletion is a change like any other, and "deleted" and "set to `null`" are
@@ -176,8 +190,8 @@ else's. Leaving it means the next launch simply finishes the merge.
 A launch with nothing to merge is the common case, so it's the fast one. The
 state directory also records every `settings.json`'s modification time as of
 the last merge, to the nanosecond, from a single `stat`. When they all still
-match, `jq` never starts. Measured, the whole preparation for a launch is about
-10 ms. Nanoseconds matter here: `path mtime` counts whole seconds, and with it
+match, `jq` never starts. Measured, the whole preparation for a launch takes
+10 to 20 ms. Nanoseconds matter here: `path mtime` counts whole seconds, and with it
 a change saved in the same second as a merge was missed. The test suite caught
 that.
 

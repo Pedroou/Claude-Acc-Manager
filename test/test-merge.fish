@@ -178,6 +178,39 @@ __claude_profiles_merge 2>/dev/null
 check "the key stays where it was set" null (get default .env.ANTHROPIC_API_KEY)
 check "the rest of env is shared as usual" '"vim"' (get default .env.EDITOR)
 
+section "Hooks for the same event, changed on both sides, both land"
+profile personal
+set -l lint '{"matcher": "Edit", "hooks": [{"type": "command", "command": "lint"}]}'
+set -l guard '{"matcher": "Bash", "hooks": [{"type": "command", "command": "guard"}]}'
+set -l guard2 '{"matcher": "Bash", "hooks": [{"type": "command", "command": "guard --strict"}]}'
+set -l fmt '{"matcher": "Write", "hooks": [{"type": "command", "command": "fmt"}]}'
+settings default "{\"hooks\": {\"PreToolUse\": [$lint, $guard]}}"
+settings personal "{\"hooks\": {\"PreToolUse\": [$lint, $guard]}}"
+__claude_profiles_merge 2>/dev/null
+settings default "{\"hooks\": {\"PreToolUse\": [$lint, $guard2]}}"
+settings personal "{\"hooks\": {\"PreToolUse\": [$lint, $guard, $fmt]}}"
+set -l said (__claude_profiles_merge 2>&1)
+check "one side's edit and the other's new hook" "fmt guard --strict lint" \
+    (get default '[.hooks.PreToolUse[].hooks[].command] | sort | join(" ")' | string trim -c '"')
+check "on both sides" "fmt guard --strict lint" \
+    (get personal '[.hooks.PreToolUse[].hooks[].command] | sort | join(" ")' | string trim -c '"')
+check "and it isn't a conflict" 0 (count (string match '*changed in*' -- $said))
+
+section "Which provider an account talks to is its own"
+merged_pair
+settings personal '{"model": "sonnet", "theme": "dark", "hooks": {"Stop": ["a"]},
+                    "env": {"CLAUDE_CODE_USE_BEDROCK": "1", "AWS_PROFILE": "work"}, "awsAuthRefresh": "aws sso login"}'
+__claude_profiles_merge 2>/dev/null
+check "none of it reaches the other profile" '{}' (get default '{env, awsAuthRefresh} | with_entries(select(.value != null))')
+
+section "More settings can be made per-account"
+merged_pair
+set -g claude_profiles_own env.MY_GATEWAY
+settings personal '{"model": "sonnet", "theme": "dark", "hooks": {"Stop": ["a"]}, "env": {"MY_GATEWAY": "x"}}'
+__claude_profiles_merge 2>/dev/null
+check "one named in claude_profiles_own stays put" null (get default .env.MY_GATEWAY)
+set -e claude_profiles_own
+
 section "No second profile: nothing to do"
 settings default '{"theme": "dark"}'
 set -l said (__claude_profiles_merge 2>&1)
