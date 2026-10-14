@@ -16,14 +16,9 @@ function claude-profiles --description 'List, add, remove or rename Claude Code 
         case rename mv
             __claude_profiles_rename $argv
         case help -h --help
-            echo "Usage:"
-            echo "  claude [profile] [args…]              start Claude Code (the last-used profile if none given)"
-            echo "  claude-profiles                       list your profiles"
-            echo "  claude-profiles add <name>            make a new one, for another account"
-            echo "  claude-profiles remove <name>         delete one; the shared history and settings stay"
-            echo "  claude-profiles rename <old> <new>    rename one, the default included"
+            claude-help
         case '*'
-            echo "claude-profiles: no such command '$command'. Try 'claude-profiles help'." >&2
+            echo "claude-profiles: no such command '$command'. See 'claude-help'." >&2
             return 2
     end
 end
@@ -72,6 +67,8 @@ function __claude_profiles_list
             $dim (string pad -r -w $widths[3] -- $rows[(math $i + 2)]) $off \
             $rows[(math $i + 3)]
     end
+    echo
+    echo $dim"Run 'claude-help' to see all commands."$off
 end
 
 function __claude_profiles_add -a name
@@ -99,6 +96,7 @@ function __claude_profiles_add -a name
     __claude_profiles_share $dir
     __claude_profiles_merge 2>/dev/null # reports that the new profile got the settings: it's what add is for
 
+    __claude_profiles_shortcuts
     echo "Added $name, in "(string replace -r "^$HOME" '~' -- $dir)", with everything the other profiles share."
     echo "Log it in to its account:  claude $name, then /login"
 end
@@ -140,6 +138,7 @@ function __claude_profiles_remove -a name
     find $dir -mindepth 1 -maxdepth 1 -type l -lname "$HOME/.claude/*" -delete
     mkdir -p (path dirname $kept); and mv -T $dir $kept; or return
     test "$name" = (__claude_profiles_state last; or echo); and __claude_profiles_state last $default
+    __claude_profiles_shortcuts
     echo "Removed $name. What was left of it is in "(string replace -r "^$HOME" '~' -- $kept)"."
 end
 
@@ -171,6 +170,7 @@ function __claude_profiles_rename -a old new
         mv $dir $HOME/.claude-$new; or return
     end
     test "$old" = (__claude_profiles_state last; or echo); and __claude_profiles_state last $new
+    __claude_profiles_shortcuts
     echo "Renamed $old to $new."
 end
 
@@ -182,6 +182,12 @@ function __claude_profiles_new_name -a name
     end
     if not string match -qr '^[a-z0-9][a-z0-9_-]*$' -- $name
         echo "claude-profiles: a profile name is lowercase letters, digits, - and _." >&2
+        return 1
+    end
+    # claude-help and claude-profiles are this tool's own, so `help` and
+    # `profiles` would be shortcuts to nowhere, and `claude <name>` wouldn't open them.
+    if contains -- $name help profiles
+        echo "claude-profiles: '$name' is reserved (claude $name)." >&2
         return 1
     end
     if __claude_profiles_find $name >/dev/null; or test -e $HOME/.claude-$name

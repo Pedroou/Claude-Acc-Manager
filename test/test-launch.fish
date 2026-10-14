@@ -32,6 +32,20 @@ check "a ~/.claude-* Claude Code never started in isn't a profile" "$HOME/.claud
 claude ../etc
 check "nor is a path" "$HOME/.claude-personal|../etc" (launched)
 
+section "claude help and claude profiles, but only in those exact shapes"
+profile personal
+check "claude help is claude-help" "$(claude-help)" "$(claude help)"
+check "and starts nothing" "" (launched)
+claude help me with this
+check "help with anything after it is a prompt" "unset|help me with this" (launched)
+set -l said (claude profiles | string replace -ra '\e\[[0-9;]*m' '')
+check "claude profiles lists them" 1 (count (string match '*personal*' -- $said))
+claude profiles add other >/dev/null
+check "and takes claude-profiles' commands" $HOME/.claude-other (__claude_profiles_find other)
+claude profiles are slow
+check "anything else after it is a prompt" "unset|profiles are slow" (launched)
+check "and none of it changed what's remembered" 1 (__claude_profiles_state last >/dev/null; echo $status)
+
 section "A renamed default is found by its name"
 profile personal
 __claude_profiles_state default-name work

@@ -3,9 +3,10 @@
 # MUST run with: fish --no-config
 source (dirname (realpath (status filename)))/helpers.fish
 
-# The listing without its colours, one line per profile.
+# The listing without its colours, one line per profile - and without the
+# pointer to claude-help under it.
 function listing
-    claude-profiles | string replace -ra '\e\[[0-9;]*m' ''
+    claude-profiles | string replace -ra '\e\[[0-9;]*m' '' | string match -rv '^$|claude-help'
 end
 
 section "The list: every profile, its account, and the one claude opens"
@@ -23,6 +24,8 @@ check "the remembered one is marked" 1 \
 check "a profile nobody has logged into says so" 1 (count (string match '*unused*not logged in*' -- $rows[3]))
 __claude_profiles_state last gone
 check "with nothing valid remembered, the default is marked" 1 (count (string match '● default*' -- (listing)[1]))
+set -l said (claude-profiles | string replace -ra '\e\[[0-9;]*m' '')
+check "and under it, where the rest of the commands are" "Run 'claude-help' to see all commands." "$said[-1]"
 
 section "add: a new profile, set up like the others, logged into nothing"
 mkdir -p $HOME/.claude/skills
@@ -55,6 +58,10 @@ check "not the default's" 1 $status
 set -l said (claude-profiles add plugins 2>&1)
 check "not one of Claude Code's commands, asked of Claude Code" 1 \
     (count (string match "*one of Claude Code's own commands*" -- $said))
+claude-profiles add help 2>/dev/null
+check "not help, which is claude-help" 1 $status
+claude-profiles add profiles 2>/dev/null
+check "nor profiles, which is claude-profiles" 1 $status
 claude-profiles add
 check "and a name is needed" 2 $status
 
@@ -120,6 +127,35 @@ check "the default can be renamed" $HOME/.claude (__claude_profiles_find work)
 check "which is only a name: ~/.claude stays put" dir (kind $HOME/.claude)
 claude-profiles rename work home 2>/dev/null
 check "not to a name that's taken" 1 $status
+
+section "claude-<profile>: one per profile, kept up by add, remove and rename"
+profile personal
+__claude_profiles_state default-name work
+__claude_profiles_shortcuts
+check "one for each profile, the default by its name" "claude-work claude-personal" "$__claude_profiles_shortcuts"
+claude-personal -r
+check "claude-personal is claude personal" "$HOME/.claude-personal|-r" (launched)
+claude-work
+check "claude-work is the default" "unset|" (launched)
+claude-profiles add home >/dev/null
+check "add makes one" 0 (functions -q claude-home; echo $status)
+claude-profiles rename home away >/dev/null
+check "rename moves it" "1 0" "$(functions -q claude-home; echo $status) $(functions -q claude-away; echo $status)"
+echo y | claude-profiles remove away >/dev/null
+check "remove takes it away" 1 (functions -q claude-away; echo $status)
+check "claude-profiles itself is never replaced" 1 (count (functions claude-profiles | string match '*__claude_profiles_list*'))
+function claude-taken; echo mine; end
+profile taken
+__claude_profiles_shortcuts
+check "nor a claude-<name> that was there first" mine (claude-taken)
+functions -e claude-taken
+profile gone
+__claude_profiles_shortcuts
+rm -r $HOME/.claude-gone # removed by another shell
+set -l said (claude-gone 2>&1)
+check "one to a profile removed elsewhere says so" 1 $status
+check "rather than starting Claude Code" "" (launched)
+check "and why" 1 (count (string match "*no profile called 'gone'*" -- $said))
 
 section "install.fish, including an upgrade from the version before names"
 set -l cfg $HOME/.config

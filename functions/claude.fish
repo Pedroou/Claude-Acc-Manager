@@ -12,6 +12,21 @@
 # it wins over the remembered profile: it's how a copied resume command, like
 # `CLAUDE_CONFIG_DIR=~/.claude-work claude --resume <id>`, keeps meaning what it says.
 function claude --description 'Claude Code, in the profile you name or the one you used last'
+    # `claude help` and `claude profiles …` are claude-help and claude-profiles,
+    # but only in those exact shapes: `claude help me with this` is a prompt.
+    switch "$argv[1]"
+        case help
+            if test (count $argv) -eq 1
+                claude-help
+                return
+            end
+        case profiles
+            if test (count $argv) -eq 1; or contains -- $argv[2] list ls add new remove rm rename mv help -h --help
+                claude-profiles $argv[2..]
+                return
+            end
+    end
+
     set -l name
     set -l dir
     if set -q argv[1]; and set dir (__claude_profiles_find $argv[1])

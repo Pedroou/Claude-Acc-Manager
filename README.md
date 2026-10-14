@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>claude-profiles</h1>
+<h1>Acc-Manager</h1>
 
 <p><b>Several Claude Code accounts, one Claude Code.</b></p>
 
@@ -19,27 +19,29 @@
 
 </div>
 
-A work seat and a personal subscription are two logins, and Claude Code holds
-one login per config directory. `CLAUDE_CONFIG_DIR` gives you a second one -
-along with a second copy of everything else: your CLAUDE.md, skills, plugins,
-settings, and every past session. Then the two copies drift apart, and `/resume`
-in one account can't see what you did in the other.
+Claude Code holds one login per config directory. `CLAUDE_CONFIG_DIR` gives
+you a second one, along with a second copy of everything else:
+CLAUDE.md, skills, plugins, settings, and every past session.
+Then `/resume` in one account can't see what you did in the other.
 
-This keeps the logins apart and **everything else as one**. There is nothing to
-sync, so nothing ever asks you what to do: you pick an account when you start
-Claude Code, or you don't and get the one you used last.
+**Acc-Manager** keeps the logins apart and **everything else as one**.
+You pick a profile when you start Claude Code, or you don't and
+get the one you used last.
 
 ## Using it
 
 ```fish
-claude                  # the profile you used last
-claude personal         # that one - and it's now the one you used last
-claude personal -r      # anything after the profile goes to Claude Code as it is
+claude                         # uses the profile you used last
+claude-<profile>               # uses <profile> - and it's now the last used one
+claude-<profile> [<args>…]     # works with default claude code args
 ```
 
 ```fish
-claude-profiles add personal     # a profile for another account; then `claude personal` and /login
-claude-profiles                  # every profile, its account, and what's running
+claude-profiles                     # lists all profiles, its account, and running instances
+claude-profiles add <name>          # adds a new profile - run 'claude-<profile>' and '/login' to link to an account
+claude-profiles remove <profile>    # removes a profile - shared history and settings survive
+claude-profiles rename <old> <new>  # renames a profile
+claude-help                         # lists every new command and how to use it
 ```
 
 ```
@@ -47,10 +49,10 @@ claude-profiles                  # every profile, its account, and what's runnin
   personal   you@example.com     ~/.claude-personal
 ```
 
-The `●` is the one plain `claude` opens. `claude-profiles rename` and
-`claude-profiles remove` do what they say. Removing a profile only ever loses
+The `●` is the one plain `claude` opens. Removing a profile only ever loses
 its login: anything it still held joins the shared copy, and the rest is set
 aside in `~/.claude/backups/`. Profile names tab-complete after `claude`.
+`claude profiles …`, `claude <profile>` and `claude help` work too.
 
 ## What is shared
 
@@ -80,7 +82,7 @@ A few things you'd otherwise have to ask:
   settings change reaches it exactly as your own edit to `settings.json` would,
   and every write is atomic. The one thing that waits for a profile to be idle
   is merging in a copy of its history left over from before it was shared, and
-  that happens once.
+  that happens only once.
 - **Do I need to restart anything?** No.
 - **Does anything move?** Only the first time a profile is shared. Its own
   sessions join the shared ones, so none drop out of `/resume`. Anything else
@@ -102,32 +104,19 @@ Or without [fisher](https://github.com/jorgebucaran/fisher):
 ```fish
 git clone https://github.com/Pedroou/claude-profiles
 cd claude-profiles
-./install.fish        # links into ~/.config/fish, so `git pull` is an update
+./install.fish        # links into ~/.config/fish, so 'git pull' is an update
 ```
 
-Your existing `~/.claude` is the first profile, named `default` until you
-`claude-profiles rename default <name>`. Then add one per other account:
+Your existing `~/.claude` is the first profile, named `default` until you run
+`claude-profiles rename default <new name>`. Add one profile per account:
 
 ```fish
-claude-profiles add personal
-claude personal       # then /login, with that account
+claude-profiles add <name>
+claude <name>         # then run '/login' to connect it to an account
 ```
 
 Keep both claude.ai accounts signed in by giving each its own browser profile,
 and paste the `/login` link into the right one.
-
-<details>
-<summary><b>Upgrading from the two-profile version</b></summary>
-
-`git pull && ./install.fish`, on each machine. It keeps the names you had
-(`work` for `~/.claude`, `personal` for `~/.claude-personal`) and which one you
-used last. `claude-work` and `claude-personal` become `claude work` and `claude
-personal`, and `claude-profiles-diff`/`-sync` are gone, along with the prompt that
-asked you which way to sync, because there is nothing left to sync. The first
-launch afterwards shares what the old version didn't (CLAUDE.md, skills, plugins
-and so on) and says what it merged.
-
-</details>
 
 ## How it works
 
@@ -153,11 +142,11 @@ in one and a hook edited in the other.
 When no `settings.json` has changed since the last merge, which is nearly
 always, the whole thing costs a `stat` per profile.
 
-[`docs/design.md`](docs/design.md) has the full reasoning, including what the
-previous version did and why it's gone.
+[`docs/design.md`](docs/design.md) has the full reasoning, including the
+latest design choices and decisions.
 
 ```fish
-fish --no-config test/run.fish        # 160 assertions, four suites
+fish --no-config test/run.fish        # 181 assertions, four suites
 ```
 
 Every suite runs the real functions against a throwaway `$HOME`, a stand-in
@@ -174,14 +163,18 @@ touched.
   profile starts with a copy of the default's.
 - **Linux with GNU coreutils.** Whether a session is running comes from
   `/proc`, and the file handling uses GNU options (`mv -T`, `stat -c`).
-- A prompt that is exactly a profile's name (`claude personal`) opens the
-  profile. Any other wording reaches Claude Code.
+- A prompt that is exactly a profile's name (`claude personal`), `help`, or
+  `profiles` (alone or followed by one of its commands) is taken by this tool. Any
+  other wording reaches Claude Code.
+- A `claude-<name>` made by `add` or `rename` appear only in that shell and every
+  new one. shells already open only get it after they restart.
 
 ## Works with
 
 **[Agent Session Manager](https://github.com/Pedroou/claude-sessions-widget)**,
-a Plasma panel widget that shows which of your Claude Code sessions needs you,
-across every profile. Its account search finds the profiles this makes, and
+a Plasma panel widget that shows your Claude Code sessions' status,
+includes profiles, and allows you to filter sessions through them.
+Its account search finds the profiles **Acc-Manager** makes, but
 neither one depends on the other.
 
 ## Licence

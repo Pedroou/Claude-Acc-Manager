@@ -57,4 +57,6 @@ echo "✓ Installed. Open a new shell, or run: exec fish"
 echo
 echo "  claude                  Claude Code, in the profile you used last"
 echo "  claude <profile> …      in that profile"
+echo "  claude-<profile> …      the same, as one word"
 echo "  claude-profiles         your profiles, and how to add more"
+echo "  claude-help             every command"
