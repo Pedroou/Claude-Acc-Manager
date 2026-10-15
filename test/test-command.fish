@@ -3,10 +3,11 @@
 # MUST run with: fish --no-config
 source (dirname (realpath (status filename)))/helpers.fish
 
-# The listing without its colours, one line per profile - and without the
+# The listing without its colours (fish 3 resets them with \e(B\e[m, fish 4
+# with \e[m), one line per profile - and without the
 # pointer to claude-help under it.
 function listing
-    claude-profiles | string replace -ra '\e\[[0-9;]*m' '' | string match -rv '^$|claude-help'
+    claude-profiles | string replace -ra '\e(\[[0-9;]*m|\(B)' '' | string match -rv '^$|claude-help'
 end
 
 section "The list: every profile, its account, and the one claude opens"
@@ -24,7 +25,7 @@ check "the remembered one is marked" 1 \
 check "a profile nobody has logged into says so" 1 (count (string match '*unused*not logged in*' -- $rows[3]))
 __claude_profiles_state last gone
 check "with nothing valid remembered, the default is marked" 1 (count (string match '● default*' -- (listing)[1]))
-set -l said (claude-profiles | string replace -ra '\e\[[0-9;]*m' '')
+set -l said (claude-profiles | string replace -ra '\e(\[[0-9;]*m|\(B)' '')
 check "and under it, where the rest of the commands are" "Run 'claude-help' to see all commands." "$said[-1]"
 
 section "add: a new profile, set up like the others, logged into nothing"

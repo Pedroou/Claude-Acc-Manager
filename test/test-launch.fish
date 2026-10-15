@@ -38,7 +38,7 @@ check "claude help is claude-help" "$(claude-help)" "$(claude help)"
 check "and starts nothing" "" (launched)
 claude help me with this
 check "help with anything after it is a prompt" "unset|help me with this" (launched)
-set -l said (claude profiles | string replace -ra '\e\[[0-9;]*m' '')
+set -l said (claude profiles | string replace -ra '\e(\[[0-9;]*m|\(B)' '')
 check "claude profiles lists them" 1 (count (string match '*personal*' -- $said))
 claude profiles add other >/dev/null
 check "and takes claude-profiles' commands" $HOME/.claude-other (__claude_profiles_find other)
